@@ -53,26 +53,6 @@ func (v *Vector3d) Normalize() {
 	v.Normal[2] /= length
 }
 
-func (v *Vector3d) GetNormal() []float64 {
-	return v.Normal[:]
-}
-
-func (v *Vector3d) DotProduct(v3d *Vector3d) float64 {
-	return v.Normal[0]*v3d.Normal[0] + v.Normal[1]*v3d.Normal[1] + v.Normal[2]*v3d.Normal[2] // Original Java code only used 3 components for dot product
-}
-
-func (v *Vector3d) CrossProduct(v3d *Vector3d) *Vector3d {
-	u1, u2, u3 := v.Normal[0], v.Normal[1], v.Normal[2]
-	v1, v2, v3 := v3d.Normal[0], v3d.Normal[1], v3d.Normal[2]
-	return NewVector3d(u2*v3-u3*v2, u3*v1-u1*v3, u1*v2-u2*v1)
-}
-
-func (v *Vector3d) Add(v3d *Vector3d) {
-	v.Normal[0] += v3d.Normal[0]
-	v.Normal[1] += v3d.Normal[1]
-	v.Normal[2] += v3d.Normal[2]
-}
-
 func GetLength(vec []float64) float64 {
 	return math.Sqrt(math.Abs(vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2]))
 }
@@ -121,7 +101,7 @@ func (c *Clist) AddPoint(p *Point3d) {
 func (c *Clist) Back() {
 	c.count--
 	if c.count < 0 {
-		c.count = c.end - 1 // Use end, not max, for correct wrap-around
+		c.count = c.end - 1
 	}
 }
 func (c *Clist) NextPoint() *Point3d {
@@ -200,7 +180,7 @@ func (f *Face) GetPlane() *Plane {
 
 func (f *Face) createNormal() {
 	if len(f.Points) < 3 {
-		f.normal = []float64{0, 0, 1, 0} // Default normal for invalid face
+		f.normal = []float64{0, 0, 1, 0}
 		return
 	}
 	f.normal = make([]float64, 4)
@@ -223,7 +203,7 @@ func (f *Face) createNormal() {
 
 	nor := NewVector3dFromArray(f.normal)
 	nor.Normalize()
-	f.normal = nor.GetNormal()
+	f.normal = nor.Normal[:]
 }
 
 // =====================================================================================
@@ -353,9 +333,11 @@ func (m *Matrix) MultiplyBy(aMatrix *Matrix) *Matrix {
 
 func (m *Matrix) TransformObj(src, dest *Matrix) {
 	for x := 0; x < len(src.ThisMatrix); x++ {
-		dest.ThisMatrix[x][2] = m.ThisMatrix[0][2]*src.ThisMatrix[x][0] + m.ThisMatrix[1][2]*src.ThisMatrix[x][1] + m.ThisMatrix[2][2]*src.ThisMatrix[x][2] + m.ThisMatrix[3][2]
-		dest.ThisMatrix[x][0] = m.ThisMatrix[0][0]*src.ThisMatrix[x][0] + m.ThisMatrix[1][0]*src.ThisMatrix[x][1] + m.ThisMatrix[2][0]*src.ThisMatrix[x][2] + m.ThisMatrix[3][0]
-		dest.ThisMatrix[x][1] = m.ThisMatrix[0][1]*src.ThisMatrix[x][0] + m.ThisMatrix[1][1]*src.ThisMatrix[x][1] + m.ThisMatrix[2][1]*src.ThisMatrix[x][2] + m.ThisMatrix[3][1]
+		sx, sy, sz := src.ThisMatrix[x][0], src.ThisMatrix[x][1], src.ThisMatrix[x][2]
+		// The original Java code implicitly used w=1 for multiplication.
+		dest.ThisMatrix[x][0] = m.ThisMatrix[0][0]*sx + m.ThisMatrix[1][0]*sy + m.ThisMatrix[2][0]*sz + m.ThisMatrix[3][0]
+		dest.ThisMatrix[x][1] = m.ThisMatrix[0][1]*sx + m.ThisMatrix[1][1]*sy + m.ThisMatrix[2][1]*sz + m.ThisMatrix[3][1]
+		dest.ThisMatrix[x][2] = m.ThisMatrix[0][2]*sx + m.ThisMatrix[1][2]*sy + m.ThisMatrix[2][2]*sz + m.ThisMatrix[3][2]
 	}
 }
 
@@ -389,7 +371,6 @@ func (m *Mesh) AddPoint(point []float64) []float64 {
 	if ret != nil {
 		return ret
 	}
-	// Make a copy so the original face data isn't modified by transformations
 	pointCopy := make([]float64, len(point))
 	copy(pointCopy, point)
 	m.Points.AddRow(pointCopy)
@@ -642,8 +623,7 @@ func (b *BspNode) Paint(screen *ebiten.Image, x, y int) {
 		}
 
 		for i := 0; i < len(b.facePnts); i++ {
-			// Back-face culling check combined with perspective division
-			if b.facePnts[i][2] < 0.1 { // Clipping for objects too close
+			if b.facePnts[i][2] < 0.1 {
 				if b.Left != nil {
 					b.Left.Paint(screen, x, y)
 				}
@@ -653,7 +633,7 @@ func (b *BspNode) Paint(screen *ebiten.Image, x, y int) {
 			b.yp[i] = float32((400*b.facePnts[i][1])/b.facePnts[i][2]) + float32(y)
 		}
 
-		cosTheta := where / GetLength(b.facePnts[0])
+		cosTheta := (b.normal[0]*b.facePnts[0][0] + b.normal[1]*b.facePnts[0][1] + b.normal[2]*b.facePnts[0][2]) / GetLength(b.facePnts[0])
 		c := 240 - int(cosTheta*240)
 
 		b1 := int(b.colBlue) - c
@@ -728,9 +708,16 @@ func (o *Object_3d) ApplyMatrixBatch(m *Matrix) {
 }
 
 func (o *Object_3d) ApplyMatrixTemp(aMatrix *Matrix) {
-	// Create a temporary matrix for this frame's transformation
 	rotMatrixTemp := aMatrix.MultiplyBy(o.rotMatrix)
 	rotMatrixTemp.TransformObj(o.normalMesh.Points, o.transNormalMesh.Points)
+
+	// FIX: Re-normalize all normals after transformation
+	for _, n := range o.transNormalMesh.Points.ThisMatrix {
+		v := NewVector3dFromArray(n)
+		v.Normalize()
+		copy(n, v.Normal[:])
+	}
+
 	rotMatrixTemp.TransformObj(o.faceMesh.Points, o.transFaceMesh.Points)
 }
 
@@ -828,12 +815,8 @@ func NewCube() *Object_3d {
 	}
 
 	colors := []color.RGBA{
-		{255, 0, 0, 255},
-		{0, 255, 0, 255},
-		{0, 0, 255, 255},
-		{255, 255, 0, 255},
-		{0, 255, 255, 255},
-		{255, 0, 255, 255},
+		{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255},
+		{255, 255, 0, 255}, {0, 255, 255, 255}, {255, 0, 255, 255},
 	}
 
 	quads := [][]int{
@@ -962,20 +945,18 @@ func NewGame() *Game {
 
 	log.Println("Creating Cube...")
 	g.cube = NewCube()
-	g.world.AddObject(g.cube, 0, 0, 200) // Pushed the cube further back
+	g.world.AddObject(g.cube, 0, 0, 200)
 	log.Println("Initialization Complete.")
 
 	return g
 }
 
 func (g *Game) Update() error {
-	// Object rotation from Start.run()
-	s := NewForwardMatrix(math.Sin(g.i)/8, math.Cos(g.p)/8, math.Cos(g.i+1.14)/8)
+	s := NewForwardMatrix(math.Sin(g.i)/8/20, math.Cos(g.p)/8/20, math.Cos(g.i+1.14)/8/20)
 	g.cube.ApplyMatrixBatch(s)
 	g.i += 0.02
 	g.p += 0.05
 
-	// Mouse camera control from McStart.java
 	x, y := ebiten.CursorPosition()
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		if !g.dragged {
@@ -1023,29 +1004,28 @@ func main() {
 // =====================================================================================
 // Ebiten Drawing Helpers
 // =====================================================================================
-func fillConvexPolygon(screen *ebiten.Image, xp, yp []float32, clr color.Color) {
+func fillConvexPolygon(screen *ebiten.Image, xp, yp []float32, clr color.RGBA) {
 	if len(xp) < 3 {
 		return
 	}
 
 	indices := make([]uint16, 0, (len(xp)-2)*3)
 	for i := 2; i < len(xp); i++ {
-		// Create a fan of triangles from the first vertex (index 0)
 		indices = append(indices, 0, uint16(i-1), uint16(i))
 	}
 
 	vertices := make([]ebiten.Vertex, len(xp))
-	r, g, b, a := clr.RGBA()
-	cr := float32(r) / 65535.0
-	cg := float32(g) / 65535.0
-	cb := float32(b) / 65535.0
-	ca := float32(a) / 65535.0
+	// FIX: Use the uint8 RGBA fields directly and normalize to float32 [0,1]
+	cr := float32(clr.R) / 255.0
+	cg := float32(clr.G) / 255.0
+	cb := float32(clr.B) / 255.0
+	ca := float32(clr.A) / 255.0
 
 	for i := range xp {
 		vertices[i] = ebiten.Vertex{
 			DstX:   xp[i],
 			DstY:   yp[i],
-			SrcX:   1, // from 3x3 white image
+			SrcX:   1,
 			SrcY:   1,
 			ColorR: cr,
 			ColorG: cg,
