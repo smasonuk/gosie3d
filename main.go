@@ -117,7 +117,7 @@ type Face struct {
 // BspNode is a node in the BSP tree.
 type BspNode struct {
 	Face        *Face
-	Left, Right *BspNode // Left is "front" (negative side), Right is "back" (positive side)
+	Left, Right *BspNode
 }
 
 // Plane represents a plane in 3D space (Ax + By + Cz + D = 0).
@@ -131,7 +131,6 @@ func NewObject3D() *Object3D {
 	}
 }
 
-// Finished processes the loaded faces to build the BSP tree.
 func (o *Object3D) Finished() {
 	o.TransPoints = make([]Vector3, len(o.AllPoints))
 	log.Printf("Building BSP Tree with %d faces...", len(o.AllFaces))
@@ -149,20 +148,29 @@ func (f *Face) createNormal() {
 	p3 := f.Owner.AllPoints[f.PointIndices[2]]
 
 	u_x, u_y, u_z := p2[0]-p1[0], p2[1]-p1[1], p2[2]-p1[2]
-	v_x, v_y, v_z := p3[0]-p2[0], p3[1]-p2[1], p3[2]-p2[2]
+	v_x, v_y, v_z := p3[0]-p1[0], p3[1]-p1[1], p3[2]-p1[2]
 
 	nx, ny, nz := u_y*v_z-u_z*v_y, u_z*v_x-u_x*v_z, u_x*v_y-u_y*v_x
 	l := float32(math.Sqrt(float64(nx*nx + ny*ny + nz*nz)))
 	if l > 0 {
 		f.Normal = Vector3{nx / l, ny / l, nz / l, 0}
 	}
+}
 
-	// reverse normal if face is back-facing
-	// if f.Normal[2] < 0 {
+// flip normal
+func (f *Face) FlipNormal() {
+	if len(f.PointIndices) < 3 {
+		return
+	}
 	f.Normal[0] = -f.Normal[0]
 	f.Normal[1] = -f.Normal[1]
 	f.Normal[2] = -f.Normal[2]
-	// }
+	if f.cachedPlane != nil {
+		f.cachedPlane.A = -f.cachedPlane.A
+		f.cachedPlane.B = -f.cachedPlane.B
+		f.cachedPlane.C = -f.cachedPlane.C
+		f.cachedPlane.D = -f.cachedPlane.D
+	}
 }
 
 func (f *Face) GetPlane() *Plane {
@@ -210,7 +218,6 @@ func (o *Object3D) createBspTree(faces []*Face) *BspNode {
 
 	var leftFaces, rightFaces []*Face
 	for _, currentFace := range remainingFaces {
-		// Simplified BSP: does not split polygons, assigns whole face to one side.
 		if plane.Where(currentFace) > 0 {
 			rightFaces = append(rightFaces, currentFace)
 		} else {
@@ -251,41 +258,40 @@ func (n *BspNode) Paint(screen *ebiten.Image, x, y int, vertices []ebiten.Vertex
 		return vertices, indices
 	}
 
-	// This is the core painter's algorithm traversal.
-	// It uses the transformed points from the parent object to determine visibility.
-	transformedFacePoints := make([]Vector3, len(n.Face.PointIndices))
-	for i, idx := range n.Face.PointIndices {
-		transformedFacePoints[i] = n.Face.Owner.TransPoints[idx]
-	}
+	p0 := n.Face.Owner.TransPoints[n.Face.PointIndices[0]]
+	p1 := n.Face.Owner.TransPoints[n.Face.PointIndices[1]]
+	p2 := n.Face.Owner.TransPoints[n.Face.PointIndices[2]]
 
-	// Create a temporary plane from the *transformed* face to check against the camera at origin (0,0,0)
-	p0 := transformedFacePoints[0]
-	// The normal is also transformed by the view matrix (but not translation part)
-	// For simplicity with uniform scaling and rotation, we can re-calculate from transformed points.
-	// This is less efficient but robust.
-	p1 := transformedFacePoints[1]
-	p2 := transformedFacePoints[2]
+	// Calculate the normal of the transformed face to check its direction relative to the camera.
 	u_x, u_y, u_z := p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]
-	v_x, v_y, v_z := p2[0]-p1[0], p2[1]-p1[1], p2[2]-p1[2]
+	v_x, v_y, v_z := p2[0]-p0[0], p2[1]-p0[1], p2[2]-p0[2]
 	normal_x, normal_y, normal_z := u_y*v_z-u_z*v_y, u_z*v_x-u_x*v_z, u_x*v_y-u_y*v_x
 
-	viewerDistance := normal_x*p0[0] + normal_y*p0[1] + normal_z*p0[2]
+	// Test if the face is pointing towards the camera at (0,0,0).
+	// A positive result means it's pointing away from the camera.
+	dotProductWithOrigin := normal_x*p0[0] + normal_y*p0[1] + normal_z*p0[2]
 
-	if viewerDistance < 0 { // Front-facing
+	// The face is visible if its normal is pointing towards the camera.
+	// In a right-handed system with camera looking down -Z, the normal of a visible face
+	// should form an obtuse angle with the vector to a point on the face, making the dot product negative.
+	if dotProductWithOrigin > 0 { // Front-facing
 		vertices, indices = n.Right.Paint(screen, x, y, vertices, indices)
-		vertices, indices = n.drawFace(screen, x, y, vertices, indices, transformedFacePoints)
+		vertices, indices = n.drawFace(screen, x, y, vertices, indices)
 		vertices, indices = n.Left.Paint(screen, x, y, vertices, indices)
 	} else { // Back-facing
 		vertices, indices = n.Left.Paint(screen, x, y, vertices, indices)
-		// No drawFace call here - this is back-face culling
 		vertices, indices = n.Right.Paint(screen, x, y, vertices, indices)
 	}
 	return vertices, indices
 }
 
-func (n *BspNode) drawFace(screen *ebiten.Image, x, y int, vertices []ebiten.Vertex, indices []uint16, facePnts []Vector3) ([]ebiten.Vertex, []uint16) {
-	projected := make([][2]float32, len(facePnts))
+func (n *BspNode) drawFace(screen *ebiten.Image, x, y int, vertices []ebiten.Vertex, indices []uint16) ([]ebiten.Vertex, []uint16) {
+	facePnts := make([]Vector3, len(n.Face.PointIndices))
+	for i, idx := range n.Face.PointIndices {
+		facePnts[i] = n.Face.Owner.TransPoints[idx]
+	}
 
+	projected := make([][2]float32, len(facePnts))
 	for i, p := range facePnts {
 		if p[2] <= 1.0 { // Near-plane clipping
 			return vertices, indices
@@ -296,17 +302,11 @@ func (n *BspNode) drawFace(screen *ebiten.Image, x, y int, vertices []ebiten.Ver
 	}
 
 	// Simple flat lighting
-	lightVec := Vector3{0.5, 0.5, 1.0, 0}
-	l := float32(math.Sqrt(float64(lightVec[0]*lightVec[0] + lightVec[1]*lightVec[1] + lightVec[2]*lightVec[2])))
-	lightVec[0] /= l
-	lightVec[1] /= l
-	lightVec[2] /= l
-
+	lightVec := Vector3{0.577, 0.577, -0.577, 0} // Normalized light vector
 	dot := n.Face.Normal[0]*lightVec[0] + n.Face.Normal[1]*lightVec[1] + n.Face.Normal[2]*lightVec[2]
 	if dot < 0 {
 		dot = 0
-	} // Only light front-facing side of polygon
-
+	}
 	intensity := 0.2 + 0.8*dot // Ambient + Diffuse
 
 	r, g, b, _ := n.Face.Color.RGBA()
@@ -331,7 +331,6 @@ func (n *BspNode) drawFace(screen *ebiten.Image, x, y int, vertices []ebiten.Ver
 	for i := 1; i < len(projected)-1; i++ {
 		indices = append(indices, baseIndex, baseIndex+uint16(i), baseIndex+uint16(i+1))
 	}
-
 	return vertices, indices
 }
 
@@ -363,9 +362,7 @@ type World3D struct {
 	camPos  [3]float32
 }
 
-func NewWorld3D() *World3D {
-	return &World3D{}
-}
+func NewWorld3D() *World3D { return &World3D{} }
 
 func (w *World3D) AddObject(obj *Object3D, x, y, z float32) {
 	w.objects = append(w.objects, obj)
@@ -407,7 +404,7 @@ type Game struct {
 
 func createCube() *Object3D {
 	obj := NewObject3D()
-	s := float32(20.0)
+	s := float32(30.0) // Increased size for better visibility
 
 	obj.AllPoints = []Vector3{
 		{-s, -s, -s, 1}, {s, -s, -s, 1}, {s, s, -s, 1}, {-s, s, -s, 1}, // Z- face points (0-3)
@@ -433,6 +430,7 @@ func createCube() *Object3D {
 			Owner:        obj,
 		}
 		face.createNormal()
+		// face.FlipNormal() // Ensure normals face outward
 		obj.AllFaces = append(obj.AllFaces, face)
 	}
 
@@ -442,9 +440,10 @@ func createCube() *Object3D {
 
 func NewGame() *Game {
 	g := &Game{world: NewWorld3D()}
-
 	model := createCube()
-	g.world.AddObject(model, 0, 0, 150) // Pushed farther back
+
+	// model := load
+	g.world.AddObject(model, 0, 0, 200) // Pushed farther back
 	g.world.AddCamera(NewCamera(0, 0, 0), 0, 0, 0)
 	return g
 }
@@ -452,13 +451,13 @@ func NewGame() *Game {
 func (g *Game) Update() error {
 	// Automatic rotation
 	rotX := NewRotationMatrix(RotX, 0.005)
-	rotY := NewRotationMatrix(RotY, 0.007)
+	rotY := NewRotationMatrix(RotY, 0.009)
 	g.world.objects[0].ApplyMatrixBatch(rotY.MultiplyBy(rotX))
 
 	// Mouse camera control
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		g.isDragging = true
-		g.lastX, _ = ebiten.CursorPosition()
+		g.lastX, g.lastY = ebiten.CursorPosition()
 	}
 	if g.isDragging {
 		x, y := ebiten.CursorPosition()
