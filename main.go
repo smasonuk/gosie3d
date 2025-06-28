@@ -887,50 +887,6 @@ func NewCube() *Object_3d {
 	return obj
 }
 
-// func NewCube() *Object_3d {
-// 	obj := NewObject_3d()
-// 	s := 40.0 // size
-
-// 	points := [][3]float64{
-// 		{-s, -s, -s}, {s, -s, -s}, {s, s, -s}, {-s, s, -s}, // Front Vertices 0-3
-// 		{-s, -s, s}, {s, -s, s}, {s, s, s}, {-s, s, s}, // Back Vertices 4-7
-// 	}
-
-// 	colors := []color.RGBA{
-// 		{255, 0, 0, 255},   // Red
-// 		{0, 255, 0, 255},   // Green
-// 		{0, 0, 255, 255},   // Blue
-// 		{255, 255, 0, 255}, // Yellow
-// 		{0, 255, 255, 255}, // Cyan
-// 		{255, 0, 255, 255}, // Magenta
-// 	}
-
-// 	// FIX: Define quads with clockwise winding so normals point outwards.
-// 	// This is crucial for the back-face culling logic to work correctly.
-// 	quads := [][]int{
-// 		{0, 3, 2, 1}, // Front face
-// 		{1, 2, 6, 5}, // Right face
-// 		{5, 6, 7, 4}, // Back face
-// 		{4, 7, 3, 0}, // Left face
-// 		{2, 3, 7, 6}, // Top face
-// 		{1, 5, 4, 0}, // Bottom face
-// 	}
-
-// 	for i, q := range quads {
-// 		face := NewFace(nil, colors[i], nil)
-// 		// Vertices are added in the specified order to ensure correct normal
-// 		face.AddPoint(points[q[0]][0], points[q[0]][1], points[q[0]][2])
-// 		face.AddPoint(points[q[1]][0], points[q[1]][1], points[q[1]][2])
-// 		face.AddPoint(points[q[2]][0], points[q[2]][1], points[q[2]][2])
-// 		face.AddPoint(points[q[3]][0], points[q[3]][1], points[q[3]][2])
-// 		face.Finished(FACE_REVERSE)
-// 		obj.theFaces.AddFace(face)
-// 	}
-
-// 	obj.Finished()
-// 	return obj
-// }
-
 // =====================================================================================
 // Camera (from java/Camera.java)
 // =====================================================================================
