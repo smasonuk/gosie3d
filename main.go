@@ -7,11 +7,17 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
 	"image"
 	"image/color"
+	"io"
 	"log"
 	"math"
 	"math/rand"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -1027,8 +1033,21 @@ func NewGame() *Game {
 	g.world.AddCamera(theCamera, 0, 0, 0)
 
 	log.Println("Creating Cube...")
-	g.cube = NewCube()
-	g.world.AddObject(g.cube, 0, 0, 200)
+	// g.cube = NewCube()
+	fileNAme := "sphere.dxf"
+	reader, err := os.Open(fileNAme)
+	if err != nil {
+		log.Fatalf("Error opening DXF file %s: %v", fileNAme, err)
+	}
+	defer reader.Close()
+
+	sp, err := NewObjectFromDXF(reader, 1)
+	if err != nil {
+		log.Fatalf("Error parsing DXF file %s: %v", fileNAme, err)
+	}
+	g.cube = sp
+
+	g.world.AddObject(g.cube, 0, 0, 100)
 	log.Println("Initialization Complete.")
 
 	return g
@@ -1119,4 +1138,87 @@ func fillConvexPolygon(screen *ebiten.Image, xp, yp []float32, clr color.RGBA) {
 	op := &ebiten.DrawTrianglesOptions{}
 	op.FillRule = ebiten.FillAll
 	screen.DrawTriangles(vertices, indices, whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image), op)
+}
+
+// NewObjectFromDXF creates a new Object_3d by reading a simplified DXF file from
+// the given reader. It returns a fully constructed object with its BSP tree
+// already built, or an error if the file cannot be parsed.
+func NewObjectFromDXF(reader io.Reader, reverse int) (*Object_3d, error) {
+	// 1. Create a new, empty object to populate.
+	obj := NewObject_3d()
+
+	scanner := bufio.NewScanner(reader)
+
+	// Helper function to read the next line and parse it as a float64
+	readFloatLine := func() (float64, error) {
+		if !scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				return 0, err
+			}
+			return 0, io.EOF // Clean end of file
+		}
+		val, err := strconv.ParseFloat(strings.TrimSpace(scanner.Text()), 64)
+		if err != nil {
+			return 0, fmt.Errorf("could not parse float value '%s': %w", scanner.Text(), err)
+		}
+		return val, nil
+	}
+
+	for scanner.Scan() {
+		if !strings.HasPrefix(scanner.Text(), "3DFACE") {
+			continue
+		}
+
+		for i := 0; i < 3; i++ {
+			if !scanner.Scan() {
+				// On error, return a nil object and the error
+				return nil, fmt.Errorf("unexpected end of file while parsing 3DFACE header")
+			}
+		}
+
+		faceColor := color.RGBA{
+			R: uint8(rand.Intn(256)),
+			G: uint8(rand.Intn(256)),
+			B: uint8(rand.Intn(256)),
+			A: 255,
+		}
+		aFace := NewFace(nil, faceColor, nil)
+
+		for c := 0; c < 4; c++ {
+			x, err := readFloatLine()
+			if err != nil {
+				return nil, fmt.Errorf("error reading X coordinate for vertex %d: %w", c, err)
+			}
+			scanner.Scan() // Skip line
+
+			y, err := readFloatLine()
+			if err != nil {
+				return nil, fmt.Errorf("error reading Y coordinate for vertex %d: %w", c, err)
+			}
+			scanner.Scan() // Skip line
+
+			z, err := readFloatLine()
+			if err != nil {
+				return nil, fmt.Errorf("error reading Z coordinate for vertex %d: %w", c, err)
+			}
+			scanner.Scan() // Skip line
+
+			aFace.AddPoint(x, y, z)
+		}
+
+		aFace.Finished(reverse)
+
+		// 2. Add the face to the new object we created at the start.
+		obj.theFaces.AddFace(aFace)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading from DXF source: %w", err)
+	}
+
+	// 3. Finalize the new object by building its BSP tree.
+	obj.Finished()
+
+	// 4. On success, return the fully populated object and a nil error.
+	return obj, nil
 }
