@@ -334,10 +334,21 @@ func (m *Matrix) MultiplyBy(aMatrix *Matrix) *Matrix {
 func (m *Matrix) TransformObj(src, dest *Matrix) {
 	for x := 0; x < len(src.ThisMatrix); x++ {
 		sx, sy, sz := src.ThisMatrix[x][0], src.ThisMatrix[x][1], src.ThisMatrix[x][2]
-		// The original Java code implicitly used w=1 for multiplication.
 		dest.ThisMatrix[x][0] = m.ThisMatrix[0][0]*sx + m.ThisMatrix[1][0]*sy + m.ThisMatrix[2][0]*sz + m.ThisMatrix[3][0]
 		dest.ThisMatrix[x][1] = m.ThisMatrix[0][1]*sx + m.ThisMatrix[1][1]*sy + m.ThisMatrix[2][1]*sz + m.ThisMatrix[3][1]
 		dest.ThisMatrix[x][2] = m.ThisMatrix[0][2]*sx + m.ThisMatrix[1][2]*sy + m.ThisMatrix[2][2]*sz + m.ThisMatrix[3][2]
+	}
+}
+
+func (m *Matrix) TransformNormals(src, dest *Matrix) {
+	for x := 0; x < len(src.ThisMatrix); x++ {
+		sx, sy, sz := src.ThisMatrix[x][0], src.ThisMatrix[x][1], src.ThisMatrix[x][2]
+
+		// This is a 3x3 rotation of a vector, it deliberately ignores the
+		// translation components of the matrix (m.ThisMatrix[3][...]).
+		dest.ThisMatrix[x][0] = m.ThisMatrix[0][0]*sx + m.ThisMatrix[1][0]*sy + m.ThisMatrix[2][0]*sz
+		dest.ThisMatrix[x][1] = m.ThisMatrix[0][1]*sx + m.ThisMatrix[1][1]*sy + m.ThisMatrix[2][1]*sz
+		dest.ThisMatrix[x][2] = m.ThisMatrix[0][2]*sx + m.ThisMatrix[1][2]*sy + m.ThisMatrix[2][2]*sz
 	}
 }
 
@@ -604,13 +615,16 @@ func NewBspNode(f *Face) *BspNode {
 	return b
 }
 
+// Reverted to a faithful translation of the original Java paint logic
 func (b *BspNode) Paint(screen *ebiten.Image, x, y int) {
 	if len(b.facePnts) == 0 {
 		return
 	}
+	// The `where` variable is effectively a back-face culling check.
 	where := b.normal[0]*b.facePnts[0][0] + b.normal[1]*b.facePnts[0][1] + b.normal[2]*b.facePnts[0][2]
 
 	if where <= 0 {
+		// Back-facing, don't draw self, just traverse children.
 		if b.Left != nil {
 			b.Left.Paint(screen, x, y)
 		}
@@ -618,12 +632,13 @@ func (b *BspNode) Paint(screen *ebiten.Image, x, y int) {
 			b.Right.Paint(screen, x, y)
 		}
 	} else {
+		// Front-facing, draw in a specific order.
 		if b.Right != nil {
 			b.Right.Paint(screen, x, y)
 		}
 
 		for i := 0; i < len(b.facePnts); i++ {
-			if b.facePnts[i][2] < 0.1 {
+			if b.facePnts[i][2] < 0 {
 				if b.Left != nil {
 					b.Left.Paint(screen, x, y)
 				}
@@ -633,32 +648,27 @@ func (b *BspNode) Paint(screen *ebiten.Image, x, y int) {
 			b.yp[i] = float32((400*b.facePnts[i][1])/b.facePnts[i][2]) + float32(y)
 		}
 
-		cosTheta := (b.normal[0]*b.facePnts[0][0] + b.normal[1]*b.facePnts[0][1] + b.normal[2]*b.facePnts[0][2]) / GetLength(b.facePnts[0])
+		cosTheta := where / GetLength(b.facePnts[0])
 		c := 240 - int(cosTheta*240)
-
-		b1 := int(b.colBlue) - c
-		if b1 < 0 {
-			b1 = 0
-		}
-		if b1 > 255 {
-			b1 = 255
-		}
 		r1 := int(b.colRed) - c
 		if r1 < 0 {
 			r1 = 0
-		}
-		if r1 > 255 {
+		} else if r1 > 255 {
 			r1 = 255
 		}
 		g1 := int(b.colGreen) - c
 		if g1 < 0 {
 			g1 = 0
-		}
-		if g1 > 255 {
+		} else if g1 > 255 {
 			g1 = 255
 		}
+		b1 := int(b.colBlue) - c
+		if b1 < 0 {
+			b1 = 0
+		} else if b1 > 255 {
+			b1 = 255
+		}
 		polyColor := color.RGBA{R: uint8(r1), G: uint8(g1), B: uint8(b1), A: 255}
-
 		fillConvexPolygon(screen, b.xp, b.yp, polyColor)
 
 		if b.Left != nil {
@@ -707,17 +717,34 @@ func (o *Object_3d) ApplyMatrixBatch(m *Matrix) {
 	o.rotMatrix = m.MultiplyBy(o.rotMatrix)
 }
 
+// func (o *Object_3d) ApplyMatrixTemp(aMatrix *Matrix) {
+// 	rotMatrixTemp := aMatrix.MultiplyBy(o.rotMatrix)
+// 	rotMatrixTemp.TransformObj(o.normalMesh.Points, o.transNormalMesh.Points)
+
+// 	for _, n := range o.transNormalMesh.Points.ThisMatrix {
+// 		v := NewVector3dFromArray(n)
+// 		v.Normalize()
+// 		copy(n, v.Normal[:])
+// 	}
+
+// 	rotMatrixTemp.TransformObj(o.faceMesh.Points, o.transFaceMesh.Points)
+// }
+
 func (o *Object_3d) ApplyMatrixTemp(aMatrix *Matrix) {
 	rotMatrixTemp := aMatrix.MultiplyBy(o.rotMatrix)
-	rotMatrixTemp.TransformObj(o.normalMesh.Points, o.transNormalMesh.Points)
 
-	// FIX: Re-normalize all normals after transformation
+	// Use the new, correct method to transform the normals (rotation only).
+	rotMatrixTemp.TransformNormals(o.normalMesh.Points, o.transNormalMesh.Points)
+
+	// The renormalization step you already had is still good practice to prevent
+	// floating-point drift from affecting the length of the normal.
 	for _, n := range o.transNormalMesh.Points.ThisMatrix {
 		v := NewVector3dFromArray(n)
 		v.Normalize()
 		copy(n, v.Normal[:])
 	}
 
+	// Use the original method to transform the vertex positions (rotation and translation).
 	rotMatrixTemp.TransformObj(o.faceMesh.Points, o.transFaceMesh.Points)
 }
 
@@ -744,21 +771,16 @@ func (o *Object_3d) createBspTree(faces *FaceStore, newFaces *FaceMesh, newNormM
 		currentFace := faces.GetFace(a)
 		if pPlane.FaceIntersect(currentFace) {
 			split := pPlane.SplitFace(currentFace)
-			if split == nil || len(split) == 0 {
+			if split == nil {
 				continue
 			}
-			if split[0] != nil && len(split[0].Points) > 0 {
-				if pPlane.Where(split[0]) <= 0 {
-					fvLeft.AddFace(NewFace(split[0].Points, currentFace.Col, currentFace.GetNormal()))
-				} else {
-					fvRight.AddFace(NewFace(split[0].Points, currentFace.Col, currentFace.GetNormal()))
-				}
-			}
-			if len(split) > 1 && split[1] != nil && len(split[1].Points) > 0 {
-				if pPlane.Where(split[1]) <= 0 {
-					fvLeft.AddFace(NewFace(split[1].Points, currentFace.Col, currentFace.GetNormal()))
-				} else {
-					fvRight.AddFace(NewFace(split[1].Points, currentFace.Col, currentFace.GetNormal()))
+			for _, facePart := range split {
+				if facePart != nil && len(facePart.Points) > 0 {
+					if pPlane.Where(facePart) <= 0 {
+						fvLeft.AddFace(NewFace(facePart.Points, currentFace.Col, currentFace.GetNormal()))
+					} else {
+						fvRight.AddFace(NewFace(facePart.Points, currentFace.Col, currentFace.GetNormal()))
+					}
 				}
 			}
 		} else {
@@ -770,6 +792,7 @@ func (o *Object_3d) createBspTree(faces *FaceStore, newFaces *FaceMesh, newNormM
 			}
 		}
 	}
+
 	if fvLeft.FaceCount() > 0 {
 		parent.Left = o.createBspTree(fvLeft, newFaces, newNormMesh)
 	}
@@ -809,38 +832,98 @@ func NewCube() *Object_3d {
 	obj := NewObject_3d()
 	s := 40.0 // size
 
+	// The 8 vertices of the cube
 	points := [][3]float64{
-		{-s, -s, -s}, {s, -s, -s}, {s, s, -s}, {-s, s, -s}, // Front
-		{-s, -s, s}, {s, -s, s}, {s, s, s}, {-s, s, s}, // Back
+		{-s, -s, -s}, // 0
+		{s, -s, -s},  // 1
+		{s, s, -s},   // 2
+		{-s, s, -s},  // 3
+		{-s, -s, s},  // 4
+		{s, -s, s},   // 5
+		{s, s, s},    // 6
+		{-s, s, s},   // 7
 	}
 
 	colors := []color.RGBA{
-		{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255},
-		{255, 255, 0, 255}, {0, 255, 255, 255}, {255, 0, 255, 255},
+		{255, 0, 0, 255},   // Red
+		{0, 255, 0, 255},   // Green
+		{0, 0, 255, 255},   // Blue
+		{255, 255, 0, 255}, // Yellow
+		{0, 255, 255, 255}, // Cyan
+		{255, 0, 255, 255}, // Magenta
 	}
 
+	// Define quads with a consistent Counter-Clockwise (CCW) winding order
+	// This ensures the calculated normals point outwards from the cube.
 	quads := [][]int{
-		{0, 1, 2, 3}, // Front
-		{1, 5, 6, 2}, // Right
-		{5, 4, 7, 6}, // Back
-		{4, 0, 3, 7}, // Left
-		{3, 2, 6, 7}, // Top
-		{4, 5, 1, 0}, // Bottom
+		{0, 3, 2, 1}, // Front face  (Normal: 0, 0, -1)
+		{1, 2, 6, 5}, // Right face  (Normal: 1, 0, 0)
+		{5, 6, 7, 4}, // Back face   (Normal: 0, 0, 1)
+		{4, 7, 3, 0}, // Left face   (Normal: -1, 0, 0)
+		{3, 7, 6, 2}, // Top face    (Normal: 0, 1, 0)
+		{4, 0, 1, 5}, // Bottom face (Normal: 0, -1, 0)
 	}
 
 	for i, q := range quads {
 		face := NewFace(nil, colors[i], nil)
+		// Vertices are added in the specified order to ensure correct normal
 		face.AddPoint(points[q[0]][0], points[q[0]][1], points[q[0]][2])
 		face.AddPoint(points[q[1]][0], points[q[1]][1], points[q[1]][2])
 		face.AddPoint(points[q[2]][0], points[q[2]][1], points[q[2]][2])
 		face.AddPoint(points[q[3]][0], points[q[3]][1], points[q[3]][2])
-		face.Finished(FACE_NORMAL)
+
+		// Use FACE_NORMAL because our winding order is now correct.
+		face.Finished(FACE_REVERSE)
 		obj.theFaces.AddFace(face)
 	}
 
 	obj.Finished()
 	return obj
 }
+
+// func NewCube() *Object_3d {
+// 	obj := NewObject_3d()
+// 	s := 40.0 // size
+
+// 	points := [][3]float64{
+// 		{-s, -s, -s}, {s, -s, -s}, {s, s, -s}, {-s, s, -s}, // Front Vertices 0-3
+// 		{-s, -s, s}, {s, -s, s}, {s, s, s}, {-s, s, s}, // Back Vertices 4-7
+// 	}
+
+// 	colors := []color.RGBA{
+// 		{255, 0, 0, 255},   // Red
+// 		{0, 255, 0, 255},   // Green
+// 		{0, 0, 255, 255},   // Blue
+// 		{255, 255, 0, 255}, // Yellow
+// 		{0, 255, 255, 255}, // Cyan
+// 		{255, 0, 255, 255}, // Magenta
+// 	}
+
+// 	// FIX: Define quads with clockwise winding so normals point outwards.
+// 	// This is crucial for the back-face culling logic to work correctly.
+// 	quads := [][]int{
+// 		{0, 3, 2, 1}, // Front face
+// 		{1, 2, 6, 5}, // Right face
+// 		{5, 6, 7, 4}, // Back face
+// 		{4, 7, 3, 0}, // Left face
+// 		{2, 3, 7, 6}, // Top face
+// 		{1, 5, 4, 0}, // Bottom face
+// 	}
+
+// 	for i, q := range quads {
+// 		face := NewFace(nil, colors[i], nil)
+// 		// Vertices are added in the specified order to ensure correct normal
+// 		face.AddPoint(points[q[0]][0], points[q[0]][1], points[q[0]][2])
+// 		face.AddPoint(points[q[1]][0], points[q[1]][1], points[q[1]][2])
+// 		face.AddPoint(points[q[2]][0], points[q[2]][1], points[q[2]][2])
+// 		face.AddPoint(points[q[3]][0], points[q[3]][1], points[q[3]][2])
+// 		face.Finished(FACE_REVERSE)
+// 		obj.theFaces.AddFace(face)
+// 	}
+
+// 	obj.Finished()
+// 	return obj
+// }
 
 // =====================================================================================
 // Camera (from java/Camera.java)
@@ -952,7 +1035,7 @@ func NewGame() *Game {
 }
 
 func (g *Game) Update() error {
-	s := NewForwardMatrix(math.Sin(g.i)/8/20, math.Cos(g.p)/8/20, math.Cos(g.i+1.14)/8/20)
+	s := NewForwardMatrix(math.Sin(g.i)/8/5, math.Cos(g.p)/8/5, math.Cos(g.i+1.14)/8/5)
 	g.cube.ApplyMatrixBatch(s)
 	g.i += 0.02
 	g.p += 0.05
@@ -1015,7 +1098,6 @@ func fillConvexPolygon(screen *ebiten.Image, xp, yp []float32, clr color.RGBA) {
 	}
 
 	vertices := make([]ebiten.Vertex, len(xp))
-	// FIX: Use the uint8 RGBA fields directly and normalize to float32 [0,1]
 	cr := float32(clr.R) / 255.0
 	cg := float32(clr.G) / 255.0
 	cb := float32(clr.B) / 255.0
