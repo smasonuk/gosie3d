@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1073,7 +1074,23 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 	cam := w.cameras[w.currentCamera]
 	camX, camY, camZ := w.camXpos[w.currentCamera], w.camYpos[w.currentCamera], w.camZpos[w.currentCamera]
 
-	for i, obj := range w.objects {
+	// sort objects by distance to camera
+	var sortedIndices []int
+	for i := range w.objects {
+		sortedIndices = append(sortedIndices, i)
+	}
+	sort.Slice(sortedIndices, func(i, j int) bool {
+		distanceI := math.Sqrt(math.Pow(w.objXpos[sortedIndices[i]]-camX, 2) +
+			math.Pow(w.objYpos[sortedIndices[i]]-camY, 2) +
+			math.Pow(w.objZpos[sortedIndices[i]]-camZ, 2))
+		distanceJ := math.Sqrt(math.Pow(w.objXpos[sortedIndices[j]]-camX, 2) +
+			math.Pow(w.objYpos[sortedIndices[j]]-camY, 2) +
+			math.Pow(w.objZpos[sortedIndices[j]]-camZ, 2))
+		return distanceI > distanceJ
+	})
+
+	for _, i := range sortedIndices {
+		obj := w.objects[i]
 		m := TransMatrix(w.objXpos[i]-camX, w.objYpos[i]-camY, w.objZpos[i]-camZ)
 		obj.ApplyMatrixTemp(cam.CamMatrixRev.MultiplyBy(m))
 		obj.PaintSolid(screen, xsize/2, ysize/2)
@@ -1209,17 +1226,64 @@ func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.R
 }
 
 func (g *Game) Update() error {
-	// s := NewForwardMatrix(math.Sin(g.i)/8/5, math.Cos(g.p)/8/5, math.Cos(g.i+1.14)/8/5)
-	// g.cube.ApplyMatrixBatch(s)
+	moveSpeed := 15.0
 
+	// Automatic object rotation
 	g.i += 0.02
 	g.p += 0.05
-
 	for index, obj := range g.world.objects {
 		s := NewForwardMatrix(math.Sin(g.i+float64(index))/8/5, math.Cos(g.p)/8/5, math.Cos(g.i+1.14)/8/5)
 		obj.ApplyMatrixBatch(s)
 	}
 
+	// --- START of new code for camera movement ---
+
+	// Get the current camera
+	cam := g.world.cameras[g.world.currentCamera]
+	if cam != nil {
+		// The camera's view matrix (`CamMatrixRev`) is the inverse of its world
+		// transformation matrix. For a pure rotation matrix, the inverse is the
+		// transpose. Therefore, the columns of the view matrix represent the
+		// camera's axes (right, up, forward) in world space.
+
+		// Right vector is the first column of the view matrix.
+		rightVecX := cam.CamMatrixRev.ThisMatrix[0][0]
+		rightVecY := cam.CamMatrixRev.ThisMatrix[1][0]
+		rightVecZ := cam.CamMatrixRev.ThisMatrix[2][0]
+
+		// Forward vector is the third column of the view matrix.
+		// Note: In a right-handed coordinate system, the camera looks down its
+		// negative Z-axis, but the "forward" direction for movement is typically
+		// along the positive Z-axis of the camera's coordinate space.
+		forwardVecX := cam.CamMatrixRev.ThisMatrix[0][2]
+		forwardVecY := cam.CamMatrixRev.ThisMatrix[1][2]
+		forwardVecZ := cam.CamMatrixRev.ThisMatrix[2][2]
+
+		// Handle keyboard input for movement
+		if ebiten.IsKeyPressed(ebiten.KeyW) { // Move forward
+			g.world.camXpos[g.world.currentCamera] += forwardVecX * moveSpeed
+			g.world.camYpos[g.world.currentCamera] += forwardVecY * moveSpeed
+			g.world.camZpos[g.world.currentCamera] += forwardVecZ * moveSpeed
+		}
+		if ebiten.IsKeyPressed(ebiten.KeyS) { // Move backward
+			g.world.camXpos[g.world.currentCamera] -= forwardVecX * moveSpeed
+			g.world.camYpos[g.world.currentCamera] -= forwardVecY * moveSpeed
+			g.world.camZpos[g.world.currentCamera] -= forwardVecZ * moveSpeed
+		}
+		if ebiten.IsKeyPressed(ebiten.KeyA) { // Strafe left
+			g.world.camXpos[g.world.currentCamera] -= rightVecX * moveSpeed
+			g.world.camYpos[g.world.currentCamera] -= rightVecY * moveSpeed
+			g.world.camZpos[g.world.currentCamera] -= rightVecZ * moveSpeed
+		}
+		if ebiten.IsKeyPressed(ebiten.KeyD) { // Strafe right
+			g.world.camXpos[g.world.currentCamera] += rightVecX * moveSpeed
+			g.world.camYpos[g.world.currentCamera] += rightVecY * moveSpeed
+			g.world.camZpos[g.world.currentCamera] += rightVecZ * moveSpeed
+		}
+	}
+	// --- END of new code for camera movement ---
+
+	// Mouse look controls (existing code)
 	x, y := ebiten.CursorPosition()
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		if !g.dragged {
