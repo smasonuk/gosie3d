@@ -817,8 +817,7 @@ func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Ma
 		polyColor := color.RGBA{R: uint8(b.colRed), G: uint8(b.colGreen), B: uint8(b.colBlue), A: 255}
 
 		if changeColor {
-			// ==================== CHANGE IS HERE ====================
-			// --- 1. Define Lighting Parameters ---
+			// Define Lighting Parameters
 			// The minimum brightness for any surface (e.g., 20% light).
 			const ambientLight = 0.65
 			// Higher values create a sharper, more focused spotlight cone.
@@ -827,13 +826,13 @@ func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Ma
 			// minus the ambient light we've already added.
 			const spotlightLightAmount = 1.0 - ambientLight
 
-			// --- 2. Diffuse Factor (based on face orientation) ---
+			// Diffuse Factor (based on face orientation)
 			diffuseFactor := transformedNormal[2]
 			if diffuseFactor < 0 {
 				diffuseFactor = 0
 			}
 
-			// --- 3. Spotlight Factor (based on face position in view) ---
+			// potlight Factor (based on face position in view)
 			var spotlightFactor float64
 			lenVecToPoint := GetLength(firstTransformedPoint)
 
@@ -847,7 +846,6 @@ func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Ma
 				spotlightFactor = 1.0
 			}
 
-			// --- 4. Combine Factors ---
 			// The spotlight's contribution to brightness is scaled by the amount
 			// of light available for it.
 			spotlightBrightness := diffuseFactor * spotlightFactor * spotlightLightAmount
@@ -866,7 +864,7 @@ func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Ma
 			g1 := clamp(int(b.colGreen)-c, min, 255)
 			b1 := clamp(int(b.colBlue)-c, min, 255)
 			polyColor = color.RGBA{R: uint8(r1), G: uint8(g1), B: uint8(b1), A: 255}
-			// ================= END OF CHANGE =====================
+
 		}
 		fillConvexPolygon(screen, b.xp, b.yp, polyColor)
 
