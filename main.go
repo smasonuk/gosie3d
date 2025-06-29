@@ -600,18 +600,191 @@ func (b *BspNode) PaintWithoutColorChange(screen *ebiten.Image, x, y int, transP
 }
 
 // In BspNode.Paint, change the signature and logic
+// func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix, changeColor bool) {
+// 	if len(b.facePointIndices) == 0 {
+// 		return
+// 	}
+
+// 	transformedNormal := transNormals.ThisMatrix[b.normalIndex]
+
+// 	// Look up the first transformed point of the face.
+// 	firstTransformedPoint := transPoints.ThisMatrix[b.facePointIndices[0]]
+
+// 	// Perform the dot product using two vectors that are now in the SAME coordinate space.
+// 	// this is also used in the lighting calculation to determine the angle of the face relative to the POSITION of camera (doesn't take into account the direction of the camera).
+// 	where := transformedNormal[0]*firstTransformedPoint[0] +
+// 		transformedNormal[1]*firstTransformedPoint[1] +
+// 		transformedNormal[2]*firstTransformedPoint[2]
+
+// 	if where <= 0 {
+// 		if b.Left != nil {
+// 			b.Left.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
+// 		}
+// 		if b.Right != nil {
+// 			b.Right.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
+// 		}
+// 	} else {
+// 		if b.Right != nil {
+// 			b.Right.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
+// 		}
+
+// 		// Project the points for this polygon
+// 		for i, pointIndex := range b.facePointIndices {
+// 			// Look up the transformed point using its index!
+// 			pnt := transPoints.ThisMatrix[pointIndex]
+// 			if pnt[2] < 0 { // Z-clipping
+// 				if b.Left != nil {
+// 					b.Left.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
+// 				}
+// 				return
+// 			}
+// 			b.xp[i] = float32((400*pnt[0])/pnt[2]) + float32(x)
+// 			b.yp[i] = float32((400*pnt[1])/pnt[2]) + float32(y)
+// 		}
+
+// 		polyColor := color.RGBA{R: uint8(b.colRed), G: uint8(b.colGreen), B: uint8(b.colBlue), A: 255}
+
+// 		if changeColor {
+// 			// cosTheta := where / GetLength(firstTransformedPoint)
+
+// 			// c := 240 - int(cosTheta*240)
+
+// 			// min := 7
+// 			// r1 := clamp(int(b.colRed)-c, min, 255)
+// 			// g1 := clamp(int(b.colGreen)-c, min, 255)
+// 			// b1 := clamp(int(b.colBlue)-c, min, 255)
+// 			// polyColor = color.RGBA{R: uint8(r1), G: uint8(g1), B: uint8(b1), A: 255}
+
+// 			cosTheta := transformedNormal[2]
+
+// 			// The original lighting formula works perfectly with this new cosTheta.
+// 			c := 240 - int(cosTheta*240)
+
+// 			min := 7
+// 			r1 := clamp(int(b.colRed)-c, min, 255)
+// 			g1 := clamp(int(b.colGreen)-c, min, 255)
+// 			b1 := clamp(int(b.colBlue)-c, min, 255)
+// 			polyColor = color.RGBA{R: uint8(r1), G: uint8(g1), B: uint8(b1), A: 255}
+
+// 		}
+// 		fillConvexPolygon(screen, b.xp, b.yp, polyColor)
+
+// 		if b.Left != nil {
+// 			b.Left.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
+// 		}
+// 	}
+// }
+
+// In BspNode.PaintWithColor, update the lighting model to include a spotlight effect.
+// func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix, changeColor bool) {
+// 	if len(b.facePointIndices) == 0 {
+// 		return
+// 	}
+
+// 	transformedNormal := transNormals.ThisMatrix[b.normalIndex]
+// 	firstTransformedPoint := transPoints.ThisMatrix[b.facePointIndices[0]]
+
+// 	// Original back-face culling logic remains unchanged.
+// 	where := transformedNormal[0]*firstTransformedPoint[0] +
+// 		transformedNormal[1]*firstTransformedPoint[1] +
+// 		transformedNormal[2]*firstTransformedPoint[2]
+
+// 	if where <= 0 {
+// 		if b.Left != nil {
+// 			b.Left.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
+// 		}
+// 		if b.Right != nil {
+// 			b.Right.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
+// 		}
+// 	} else {
+// 		if b.Right != nil {
+// 			b.Right.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
+// 		}
+
+// 		// Project the points for this polygon
+// 		for i, pointIndex := range b.facePointIndices {
+// 			pnt := transPoints.ThisMatrix[pointIndex]
+// 			if pnt[2] < 0 { // Z-clipping
+// 				if b.Left != nil {
+// 					b.Left.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
+// 				}
+// 				return
+// 			}
+// 			b.xp[i] = float32((400*pnt[0])/pnt[2]) + float32(x)
+// 			b.yp[i] = float32((400*pnt[1])/pnt[2]) + float32(y)
+// 		}
+
+// 		polyColor := color.RGBA{R: uint8(b.colRed), G: uint8(b.colGreen), B: uint8(b.colBlue), A: 255}
+
+// 		if changeColor {
+// 			// ==================== CHANGE IS HERE ====================
+// 			// This lighting model combines two factors for a spotlight effect.
+// 			// Higher values create a sharper, more focused spotlight cone.
+// 			const spotlightConePower = 2.0
+
+// 			// --- 1. Diffuse Factor (based on face orientation) ---
+// 			// This is the same as the previous change. It's 1.0 if the face is
+// 			// pointing at the camera, and 0.0 if it's at a right angle.
+// 			diffuseFactor := transformedNormal[2]
+// 			if diffuseFactor < 0 {
+// 				diffuseFactor = 0
+// 			}
+
+// 			// --- 2. Spotlight Factor (based on face position in view) ---
+// 			// This factor makes faces in the center of the view brighter than
+// 			// faces at the edges. It's the cosine of the angle between the
+// 			// camera's view direction (0,0,1) and the vector to the face.
+// 			var spotlightFactor float64
+// 			lenVecToPoint := GetLength(firstTransformedPoint)
+
+// 			if lenVecToPoint > 0 {
+// 				// cos(angle) = dot((0,0,1), vecToPoint) / |vecToPoint|
+// 				cosAngle := firstTransformedPoint[2] / lenVecToPoint
+// 				if cosAngle < 0 {
+// 					cosAngle = 0 // Don't light things behind the camera's origin
+// 				}
+// 				// We raise the cosine to a power to create the cone effect.
+// 				spotlightFactor = math.Pow(cosAngle, spotlightConePower)
+// 			} else {
+// 				// The point is exactly at the camera's origin, give it full light.
+// 				spotlightFactor = 1.0
+// 			}
+
+// 			// --- 3. Combine Factors ---
+// 			// The final brightness is the product of both factors. A face must be
+// 			// both facing the camera AND be in the center of the spotlight to be
+// 			// at its brightest.
+// 			finalBrightness := diffuseFactor * spotlightFactor
+
+// 			// Use the final brightness with the original color modification formula.
+// 			// Brightness of 1.0 -> subtract 0. Brightness of 0.0 -> subtract 240.
+// 			c := 240 - int(finalBrightness*240)
+
+// 			min := 7
+// 			r1 := clamp(int(b.colRed)-c, min, 255)
+// 			g1 := clamp(int(b.colGreen)-c, min, 255)
+// 			b1 := clamp(int(b.colBlue)-c, min, 255)
+// 			polyColor = color.RGBA{R: uint8(r1), G: uint8(g1), B: uint8(b1), A: 255}
+// 			// ================= END OF CHANGE =====================
+// 		}
+// 		fillConvexPolygon(screen, b.xp, b.yp, polyColor)
+
+// 		if b.Left != nil {
+// 			b.Left.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
+// 		}
+// 	}
+// }
+
+// In BspNode.PaintWithColor, update the lighting model to include ambient light.
 func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix, changeColor bool) {
 	if len(b.facePointIndices) == 0 {
 		return
 	}
 
 	transformedNormal := transNormals.ThisMatrix[b.normalIndex]
-
-	// Look up the first transformed point of the face.
 	firstTransformedPoint := transPoints.ThisMatrix[b.facePointIndices[0]]
 
-	// Perform the dot product using two vectors that are now in the SAME coordinate space.
-	// this is also used in the lighting calculation to determine the angle of the face relative to the POSITION of camera (doesn't take into account the direction of the camera).
+	// Original back-face culling logic remains unchanged.
 	where := transformedNormal[0]*firstTransformedPoint[0] +
 		transformedNormal[1]*firstTransformedPoint[1] +
 		transformedNormal[2]*firstTransformedPoint[2]
@@ -630,7 +803,6 @@ func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Ma
 
 		// Project the points for this polygon
 		for i, pointIndex := range b.facePointIndices {
-			// Look up the transformed point using its index!
 			pnt := transPoints.ThisMatrix[pointIndex]
 			if pnt[2] < 0 { // Z-clipping
 				if b.Left != nil {
@@ -645,15 +817,56 @@ func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Ma
 		polyColor := color.RGBA{R: uint8(b.colRed), G: uint8(b.colGreen), B: uint8(b.colBlue), A: 255}
 
 		if changeColor {
-			cosTheta := where / GetLength(firstTransformedPoint)
+			// ==================== CHANGE IS HERE ====================
+			// --- 1. Define Lighting Parameters ---
+			// The minimum brightness for any surface (e.g., 20% light).
+			const ambientLight = 0.65
+			// Higher values create a sharper, more focused spotlight cone.
+			const spotlightConePower = 10.0
+			// The amount of light available for the spotlight effect is the total (1.0)
+			// minus the ambient light we've already added.
+			const spotlightLightAmount = 1.0 - ambientLight
 
-			c := 240 - int(cosTheta*240)
+			// --- 2. Diffuse Factor (based on face orientation) ---
+			diffuseFactor := transformedNormal[2]
+			if diffuseFactor < 0 {
+				diffuseFactor = 0
+			}
+
+			// --- 3. Spotlight Factor (based on face position in view) ---
+			var spotlightFactor float64
+			lenVecToPoint := GetLength(firstTransformedPoint)
+
+			if lenVecToPoint > 0 {
+				cosAngle := firstTransformedPoint[2] / lenVecToPoint
+				if cosAngle < 0 {
+					cosAngle = 0
+				}
+				spotlightFactor = math.Pow(cosAngle, spotlightConePower)
+			} else {
+				spotlightFactor = 1.0
+			}
+
+			// --- 4. Combine Factors ---
+			// The spotlight's contribution to brightness is scaled by the amount
+			// of light available for it.
+			spotlightBrightness := diffuseFactor * spotlightFactor * spotlightLightAmount
+
+			// Add the ambient light to the calculated spotlight brightness.
+			// This ensures a minimum light level for the entire scene.
+			finalBrightness := ambientLight + spotlightBrightness
+
+			// Use the final brightness with the original color modification formula.
+			// A brightness of 1.0 means no color change (subtract 0).
+			// A brightness of 0.0 means maximum darkness (subtract 240).
+			c := 240 - int(finalBrightness*240)
 
 			min := 7
 			r1 := clamp(int(b.colRed)-c, min, 255)
 			g1 := clamp(int(b.colGreen)-c, min, 255)
 			b1 := clamp(int(b.colBlue)-c, min, 255)
 			polyColor = color.RGBA{R: uint8(r1), G: uint8(g1), B: uint8(b1), A: 255}
+			// ================= END OF CHANGE =====================
 		}
 		fillConvexPolygon(screen, b.xp, b.yp, polyColor)
 
