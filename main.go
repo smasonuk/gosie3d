@@ -1,4 +1,4 @@
-package main
+package gosie3d
 
 import (
 	"bufio"
@@ -13,7 +13,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -1318,15 +1317,15 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenWidth, screenHeight
 }
 
-func main() {
-	rand.Seed(time.Now().UnixNano())
-	game := NewGame()
-	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("sie3d")
-	if err := ebiten.RunGame(game); err != nil {
-		log.Fatal(err)
-	}
-}
+// func main() {
+// 	rand.Seed(time.Now().UnixNano())
+// 	game := NewGame()
+// 	ebiten.SetWindowSize(screenWidth, screenHeight)
+// 	ebiten.SetWindowTitle("sie3d")
+// 	if err := ebiten.RunGame(game); err != nil {
+// 		log.Fatal(err)
+// 	}
+// }
 
 func fillConvexPolygon(screen *ebiten.Image, xp, yp []float32, clr color.RGBA) {
 	if len(xp) < 3 {
