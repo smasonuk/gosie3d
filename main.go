@@ -1,9 +1,3 @@
-// To run this code:
-// 1. Make sure you have Go installed.
-// 2. Set up a new Go module: go mod init <your_module_name>
-// 3. Get the Ebiten dependency: go get github.com/hajimehoshi/ebiten/v2
-// 4. Save the code as main.go and run: go run .
-
 package main
 
 import (
@@ -28,10 +22,6 @@ const (
 	screenWidth  = 640
 	screenHeight = 480
 )
-
-// =====================================================================================
-// Vector3d (from java/Vector3d.java)
-// =====================================================================================
 
 type Vector3d struct {
 	Normal [4]float64
@@ -63,10 +53,6 @@ func GetLength(vec []float64) float64 {
 	return math.Sqrt(math.Abs(vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2]))
 }
 
-// =====================================================================================
-// Point3d (from java/Point3d.java)
-// =====================================================================================
-
 type Point3d struct {
 	Points []float64
 }
@@ -80,10 +66,6 @@ func NewPoint3d(x, y, z float64) *Point3d {
 func (p *Point3d) GetX() float64 { return p.Points[0] }
 func (p *Point3d) GetY() float64 { return p.Points[1] }
 func (p *Point3d) GetZ() float64 { return p.Points[2] }
-
-// =====================================================================================
-// Clist (from java/Clist.java)
-// =====================================================================================
 
 type Clist struct {
 	points []*Point3d
@@ -118,10 +100,6 @@ func (c *Clist) NextPoint() *Point3d {
 	}
 	return c.points[old]
 }
-
-// =====================================================================================
-// Face (from java/Face.java)
-// =====================================================================================
 
 type Face struct {
 	Points  [][]float64
@@ -211,10 +189,6 @@ func (f *Face) createNormal() {
 	nor.Normalize()
 	f.normal = nor.Normal[:]
 }
-
-// =====================================================================================
-// Matrix (from java/Matrix.java)
-// =====================================================================================
 
 type Matrix struct {
 	ThisMatrix [][]float64
@@ -371,10 +345,6 @@ func (m *Matrix) Copy() *Matrix {
 	return NewMatrixFromData(m.ThisMatrix)
 }
 
-// =====================================================================================
-// Mesh (from java/Mesh.java)
-// =====================================================================================
-
 type Mesh struct {
 	Points *Matrix
 }
@@ -416,6 +386,10 @@ func (fm *FaceMesh) AddFace(f *Face) *Face {
 	return NewFace(newPoints, f.Col, f.GetNormal())
 }
 
+func (fm *FaceMesh) Copy() *FaceMesh {
+	return &FaceMesh{Mesh: *fm.Mesh.Copy()}
+}
+
 type NormalMesh struct {
 	Mesh
 }
@@ -428,9 +402,9 @@ func (nm *NormalMesh) AddNormal(pnts []float64) []float64 {
 	return nm.AddPoint(pnts)
 }
 
-// =====================================================================================
-// FaceStore (from java/FaceStore.java)
-// =====================================================================================
+func (nm *NormalMesh) Copy() *NormalMesh {
+	return &NormalMesh{Mesh: *nm.Mesh.Copy()}
+}
 
 type FaceStore struct {
 	faces []*Face
@@ -456,10 +430,6 @@ func (fs *FaceStore) RemoveFaceAt(i int) *Face {
 	fs.faces = append(fs.faces[:i], fs.faces[i+1:]...)
 	return f
 }
-
-// =====================================================================================
-// Plane (from java/Plane.java)
-// =====================================================================================
 
 type Plane struct {
 	A, B, C, D float64
@@ -592,10 +562,6 @@ func (p *Plane) Where(f *Face) float64 {
 	return inter
 }
 
-// =====================================================================================
-// BspNode (from java/BspNode.java)
-// =====================================================================================
-
 type BspNode struct {
 	facePnts [][]float64
 	normal   []float64
@@ -683,9 +649,6 @@ func (b *BspNode) Paint(screen *ebiten.Image, x, y int) {
 	}
 }
 
-// =====================================================================================
-// Object_3d (from java/Object_3d.java)
-// =====================================================================================
 type Object_3d struct {
 	faceMesh        *FaceMesh
 	normalMesh      *NormalMesh
@@ -705,6 +668,19 @@ func NewObject_3d() *Object_3d {
 	}
 }
 
+func (o *Object_3d) Clone() *Object_3d {
+	clone := &Object_3d{
+		faceMesh:        o.faceMesh,
+		normalMesh:      o.normalMesh,
+		transFaceMesh:   o.transFaceMesh.Copy(),
+		transNormalMesh: o.transNormalMesh.Copy(),
+		theFaces:        o.theFaces,
+		root:            o.root, // Note: This will not clone the BSP tree.
+		rotMatrix:       o.rotMatrix.Copy(),
+	}
+	return clone
+}
+
 func (o *Object_3d) Finished() {
 	log.Println("Creating BSP Tree...")
 	if o.theFaces.FaceCount() > 0 {
@@ -722,19 +698,6 @@ func (o *Object_3d) Finished() {
 func (o *Object_3d) ApplyMatrixBatch(m *Matrix) {
 	o.rotMatrix = m.MultiplyBy(o.rotMatrix)
 }
-
-// func (o *Object_3d) ApplyMatrixTemp(aMatrix *Matrix) {
-// 	rotMatrixTemp := aMatrix.MultiplyBy(o.rotMatrix)
-// 	rotMatrixTemp.TransformObj(o.normalMesh.Points, o.transNormalMesh.Points)
-
-// 	for _, n := range o.transNormalMesh.Points.ThisMatrix {
-// 		v := NewVector3dFromArray(n)
-// 		v.Normalize()
-// 		copy(n, v.Normal[:])
-// 	}
-
-// 	rotMatrixTemp.TransformObj(o.faceMesh.Points, o.transFaceMesh.Points)
-// }
 
 func (o *Object_3d) ApplyMatrixTemp(aMatrix *Matrix) {
 	rotMatrixTemp := aMatrix.MultiplyBy(o.rotMatrix)
@@ -887,9 +850,140 @@ func NewCube() *Object_3d {
 	return obj
 }
 
-// =====================================================================================
-// Camera (from java/Camera.java)
-// =====================================================================================
+// NewRectangle creates a new Object_3d in the shape of a cuboid (a 3D rectangle).
+// It's centered at the origin and has the specified dimensions and color.
+func NewRectangle(width, height, length float64, clr color.RGBA) *Object_3d {
+	// create a new, empty object to populate.
+	obj := NewObject_3d()
+
+	// calculate half-dimensions for centering the rectangle at the origin.
+	w2 := width / 2.0
+	h2 := height / 2.0
+	l2 := length / 2.0
+
+	// Define the 8 vertices of the cuboid based on the dimensions.
+	points := [][3]float64{
+		{-w2, -h2, -l2}, // 0: front-bottom-left
+		{w2, -h2, -l2},  // 1: front-bottom-right
+		{w2, h2, -l2},   // 2: front-top-right
+		{-w2, h2, -l2},  // 3: front-top-left
+		{-w2, -h2, l2},  // 4: back-bottom-left
+		{w2, -h2, l2},   // 5: back-bottom-right
+		{w2, h2, l2},    // 6: back-top-right
+		{-w2, h2, l2},   // 7: back-top-left
+	}
+
+	quads := [][]int{
+		{0, 3, 2, 1}, // Front face  (Normal: 0, 0, -1)
+		{1, 2, 6, 5}, // Right face  (Normal: 1, 0, 0)
+		{5, 6, 7, 4}, // Back face   (Normal: 0, 0, 1)
+		{4, 7, 3, 0}, // Left face   (Normal: -1, 0, 0)
+		{3, 7, 6, 2}, // Top face    (Normal: 0, 1, 0)
+		{4, 0, 1, 5}, // Bottom face (Normal: 0, -1, 0)
+	}
+
+	// Create each face and add it to the object.
+	for _, q := range quads {
+		// Use the single color passed into the function for every face.
+		face := NewFace(nil, clr, nil)
+
+		// Add the four vertices that make up this face.
+		face.AddPoint(points[q[0]][0], points[q[0]][1], points[q[0]][2])
+		face.AddPoint(points[q[1]][0], points[q[1]][1], points[q[1]][2])
+		face.AddPoint(points[q[2]][0], points[q[2]][1], points[q[2]][2])
+		face.AddPoint(points[q[3]][0], points[q[3]][1], points[q[3]][2])
+
+		// Finalize the face's geometry. Use FACE_NORMAL because the winding
+		// order is defined correctly to produce an outward normal.
+		face.Finished(FACE_REVERSE)
+		obj.theFaces.AddFace(face)
+	}
+
+	obj.Finished()
+
+	return obj
+}
+
+// NewSphere creates a new Object_3d in the shape of an icosphere.
+// An icosphere is a sphere made of a mesh of triangles, which is more
+// uniform than a traditional UV sphere.
+func NewSphere(radius float64, subdivisions int, clr color.RGBA) *Object_3d {
+	obj := NewObject_3d()
+
+	// Define the 12 vertices of an Icosahedron.
+	// An icosahedron is a 20-sided polyhedron that forms the base of our sphere.
+	// The 't' value is the golden ratio, which helps define the vertex positions.
+	t := (1.0 + math.Sqrt(5.0)) / 2.0
+
+	vertices := [][3]float64{
+		{-1, t, 0}, {1, t, 0}, {-1, -t, 0}, {1, -t, 0},
+		{0, -1, t}, {0, 1, t}, {0, -1, -t}, {0, 1, -t},
+		{t, 0, -1}, {t, 0, 1}, {-t, 0, -1}, {-t, 0, 1},
+	}
+
+	// Define the 20 triangular faces of the Icosahedron using indices
+	// into the vertex list. The order is important for correct normals.
+	faces := [][]int{
+		{0, 11, 5}, {0, 5, 1}, {0, 1, 7}, {0, 7, 10}, {0, 10, 11},
+		{1, 5, 9}, {5, 11, 4}, {11, 10, 2}, {10, 7, 6}, {7, 1, 8},
+		{3, 9, 4}, {3, 4, 2}, {3, 2, 6}, {3, 6, 8}, {3, 8, 9},
+		{4, 9, 5}, {2, 4, 11}, {6, 2, 10}, {8, 6, 7}, {9, 8, 1},
+	}
+
+	// Create initial list of faces for subdivision
+	subdivisionFaces := make([][3][3]float64, len(faces))
+	for i, faceIndices := range faces {
+		subdivisionFaces[i] = [3][3]float64{
+			vertices[faceIndices[0]],
+			vertices[faceIndices[1]],
+			vertices[faceIndices[2]],
+		}
+	}
+
+	// Subdivide the faces recursively to make the sphere smoother.
+	for i := 0; i < subdivisions; i++ {
+		newFaces := make([][3][3]float64, 0)
+		for _, face := range subdivisionFaces {
+			v1 := face[0]
+			v2 := face[1]
+			v3 := face[2]
+
+			// Calculate the midpoint of each edge of the triangle.
+			a := [3]float64{(v1[0] + v2[0]) / 2, (v1[1] + v2[1]) / 2, (v1[2] + v2[2]) / 2}
+			b := [3]float64{(v2[0] + v3[0]) / 2, (v2[1] + v3[1]) / 2, (v2[2] + v3[2]) / 2}
+			c := [3]float64{(v3[0] + v1[0]) / 2, (v3[1] + v1[1]) / 2, (v3[2] + v1[2]) / 2}
+
+			// Split the original triangle into 4 new ones.
+			newFaces = append(newFaces, [3][3]float64{v1, a, c})
+			newFaces = append(newFaces, [3][3]float64{v2, b, a})
+			newFaces = append(newFaces, [3][3]float64{v3, c, b})
+			newFaces = append(newFaces, [3][3]float64{a, b, c})
+		}
+		subdivisionFaces = newFaces
+	}
+
+	// Create the final faces for the Object_3d
+	for _, faceVerts := range subdivisionFaces {
+		face := NewFace(nil, clr, nil)
+
+		for _, v := range faceVerts {
+			// Normalize the vertex to push it onto the surface of a unit sphere.
+			length := math.Sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
+			normX := v[0] / length
+			normY := v[1] / length
+			normZ := v[2] / length
+
+			// Scale by the desired radius and add the point.
+			face.AddPoint(normX*radius, normY*radius, normZ*radius)
+		}
+
+		face.Finished(FACE_NORMAL)
+		obj.theFaces.AddFace(face)
+	}
+
+	obj.Finished()
+	return obj
+}
 
 type Camera struct {
 	CamMatrixRev *Matrix
@@ -910,10 +1004,6 @@ func (c *Camera) AddAngle(x, y float64) {
 	rotX := NewRotationMatrix(ROTX, -x)
 	c.CamMatrixRev = rotY.MultiplyBy(rotX).MultiplyBy(c.CamMatrixRev)
 }
-
-// =====================================================================================
-// World_3d (from java/World_3d.java)
-// =====================================================================================
 
 type World_3d struct {
 	objects       []*Object_3d
@@ -962,9 +1052,6 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 	}
 }
 
-// =====================================================================================
-// Main Game struct and loop (replaces Start.java)
-// =====================================================================================
 var (
 	whiteImage = ebiten.NewImage(3, 3)
 )
@@ -990,28 +1077,112 @@ func NewGame() *Game {
 
 	log.Println("Creating Cube...")
 	// g.cube = NewCube()
-	fileNAme := "sphere.dxf"
-	reader, err := os.Open(fileNAme)
-	if err != nil {
-		log.Fatalf("Error opening DXF file %s: %v", fileNAme, err)
-	}
-	defer reader.Close()
+	// fileNAme := "sphere.dxf"
+	// reader, err := os.Open(fileNAme)
+	// if err != nil {
+	// 	log.Fatalf("Error opening DXF file %s: %v", fileNAme, err)
+	// }
+	// defer reader.Close()
 
-	sp, err := NewObjectFromDXF(reader, 1)
-	if err != nil {
-		log.Fatalf("Error parsing DXF file %s: %v", fileNAme, err)
-	}
-	g.cube = sp
+	// sp, err := NewObjectFromDXF(reader, 1)
+	// if err != nil {
+	// 	log.Fatalf("Error parsing DXF file %s: %v", fileNAme, err)
+	// }
+	// g.cube = sp
 
-	g.world.AddObject(g.cube, 0, 0, 100)
+	// g.cube = NewRectangle(100, 100, 200, color.RGBA{R: 255, G: 0, B: 0, A: 255})
+	// g.cube = NewSphere(100, 1, color.RGBA{R: 255, G: 0, B: 0, A: 255})
+	// g.cube = NewSphereStriped(100, 2, color.RGBA{R: 255, G: 0, B: 0, A: 255}, color.RGBA{R: 0, G: 255, B: 0, A: 255}, 0.5)
+	cube := NewUVSphere(100, 14, 8, color.RGBA{R: 255, G: 0, B: 0, A: 255}, color.RGBA{R: 0, G: 255, B: 0, A: 255}, 3)
+	// cube2 := NewUVSphere(100, 14, 8, color.RGBA{R: 255, G: 0, B: 0, A: 255}, color.RGBA{R: 0, G: 255, B: 0, A: 255}, 3)
+
+	// cubeClone := NewUVSphere(100, 14, 8, color.RGBA{R: 255, G: 0, B: 0, A: 255}, color.RGBA{R: 0, G: 255, B: 0, A: 255}, 3)
+	cubeClone := cube.Clone()
+
+	g.world.AddObject(cube, 0, 0, 1000)
+	g.world.AddObject(cubeClone, 200, 0, 1000)
+
 	log.Println("Initialization Complete.")
 
 	return g
 }
 
+// NewUVSphere creates a sphere based on latitude/longitude rings (sectors and stacks).
+// This structure allows for a perfectly straight horizontal stripe.
+func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object_3d {
+	obj := NewObject_3d()
+
+	// We loop through stacks (latitude) and sectors (longitude).
+	vertices := make([][3]float64, 0)
+	for i := 0; i <= stacks; i++ {
+		stackAngle := math.Pi/2 - float64(i)*math.Pi/float64(stacks) // phi
+		xy := radius * math.Cos(stackAngle)
+		z := radius * math.Sin(stackAngle)
+
+		for j := 0; j <= sectors; j++ {
+			sectorAngle := float64(j) * 2 * math.Pi / float64(sectors) // theta
+			x := xy * math.Cos(sectorAngle)
+			y := xy * math.Sin(sectorAngle)
+			vertices = append(vertices, [3]float64{x, y, z})
+		}
+	}
+
+	// Determine the start and end stacks for the stripe.
+	// The stripe is centered around the equator (the middle stack).
+	middleStack := stacks / 2
+	stripeStart := middleStack - (stripeStacks / 2)
+	stripeEnd := middleStack + (stripeStacks / 2)
+
+	for i := 0; i < stacks; i++ {
+		// Determine the color for this entire ring of faces.
+		var faceColor color.RGBA
+		if i >= stripeStart && i < stripeEnd {
+			faceColor = stripeClr
+		} else {
+			faceColor = bodyClr
+		}
+
+		k1 := i * (sectors + 1)
+		k2 := k1 + sectors + 1
+
+		for j := 0; j < sectors; j++ {
+			k1j := k1 + j
+			k1j1 := k1j + 1
+			k2j := k2 + j
+			k2j1 := k2j + 1
+
+			// For each quad, we create two triangles.
+			// Special handling for the poles.
+			if i != 0 {
+				// First triangle of the quad
+				f1 := NewFace(nil, faceColor, nil)
+				f1.AddPoint(vertices[k1j][0], vertices[k1j][1], vertices[k1j][2])
+				f1.AddPoint(vertices[k2j][0], vertices[k2j][1], vertices[k2j][2])
+				f1.AddPoint(vertices[k1j1][0], vertices[k1j1][1], vertices[k1j1][2])
+				f1.Finished(FACE_NORMAL)
+				obj.theFaces.AddFace(f1)
+			}
+
+			if i != (stacks - 1) {
+				// Second triangle of the quad
+				f2 := NewFace(nil, faceColor, nil)
+				f2.AddPoint(vertices[k1j1][0], vertices[k1j1][1], vertices[k1j1][2])
+				f2.AddPoint(vertices[k2j][0], vertices[k2j][1], vertices[k2j][2])
+				f2.AddPoint(vertices[k2j1][0], vertices[k2j1][1], vertices[k2j1][2])
+				f2.Finished(FACE_NORMAL)
+				obj.theFaces.AddFace(f2)
+			}
+		}
+	}
+
+	// 3. Finalize the object by building its BSP tree.
+	obj.Finished()
+	return obj
+}
+
 func (g *Game) Update() error {
-	s := NewForwardMatrix(math.Sin(g.i)/8/5, math.Cos(g.p)/8/5, math.Cos(g.i+1.14)/8/5)
-	g.cube.ApplyMatrixBatch(s)
+	// s := NewForwardMatrix(math.Sin(g.i)/8/5, math.Cos(g.p)/8/5, math.Cos(g.i+1.14)/8/5)
+	// g.cube.ApplyMatrixBatch(s)
 	g.i += 0.02
 	g.p += 0.05
 
@@ -1053,15 +1224,12 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 	game := NewGame()
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("Go 3D Engine (from Java)")
+	ebiten.SetWindowTitle("sie3d")
 	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
 }
 
-// =====================================================================================
-// Ebiten Drawing Helpers
-// =====================================================================================
 func fillConvexPolygon(screen *ebiten.Image, xp, yp []float32, clr color.RGBA) {
 	if len(xp) < 3 {
 		return
@@ -1094,6 +1262,21 @@ func fillConvexPolygon(screen *ebiten.Image, xp, yp []float32, clr color.RGBA) {
 	op := &ebiten.DrawTrianglesOptions{}
 	op.FillRule = ebiten.FillAll
 	screen.DrawTriangles(vertices, indices, whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image), op)
+}
+
+func LoadObjectFromDXFFile(fileName string, reverse int) (*Object_3d, error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return nil, fmt.Errorf("could not open DXF file %s: %w", fileName, err)
+	}
+	defer file.Close()
+
+	obj, err := NewObjectFromDXF(file, reverse)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing DXF file %s: %w", fileName, err)
+	}
+
+	return obj, nil
 }
 
 // NewObjectFromDXF creates a new Object_3d by reading a simplified DXF file from
