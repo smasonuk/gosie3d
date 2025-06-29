@@ -1235,8 +1235,6 @@ func (g *Game) Update() error {
 		obj.ApplyMatrixBatch(s)
 	}
 
-	// --- START of new code for camera movement ---
-
 	// Get the current camera
 	cam := g.world.cameras[g.world.currentCamera]
 	if cam != nil {
