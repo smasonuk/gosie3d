@@ -595,8 +595,16 @@ func NewBspNode(facePoints [][]float64, faceNormal []float64, faceColor color.RG
 	return b
 }
 
+func (b *BspNode) PaintWithoutColorChange(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix) {
+	b.PaintWithColor(screen, x, y, transPoints, transNormals, false)
+}
+
+// func (b *BspNode) Paint(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix) {
+// 	b.PaintWithColor(screen, x, y, transPoints, transNormals, true)
+// }
+
 // In BspNode.Paint, change the signature and logic
-func (b *BspNode) Paint(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix) {
+func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix, changeColor bool) {
 	if len(b.facePointIndices) == 0 {
 		return
 	}
@@ -611,14 +619,14 @@ func (b *BspNode) Paint(screen *ebiten.Image, x, y int, transPoints *Matrix, tra
 
 	if where <= 0 {
 		if b.Left != nil {
-			b.Left.Paint(screen, x, y, transPoints, transNormals)
+			b.Left.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
 		}
 		if b.Right != nil {
-			b.Right.Paint(screen, x, y, transPoints, transNormals)
+			b.Right.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
 		}
 	} else {
 		if b.Right != nil {
-			b.Right.Paint(screen, x, y, transPoints, transNormals)
+			b.Right.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
 		}
 
 		// Project the points for this polygon
@@ -627,7 +635,7 @@ func (b *BspNode) Paint(screen *ebiten.Image, x, y int, transPoints *Matrix, tra
 			pnt := transPoints.ThisMatrix[pointIndex]
 			if pnt[2] < 0 { // Z-clipping
 				if b.Left != nil {
-					b.Left.Paint(screen, x, y, transPoints, transNormals)
+					b.Left.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
 				}
 				return
 			}
@@ -635,40 +643,44 @@ func (b *BspNode) Paint(screen *ebiten.Image, x, y int, transPoints *Matrix, tra
 			b.yp[i] = float32((400*pnt[1])/pnt[2]) + float32(y)
 		}
 
-		cosTheta := where / GetLength(firstTransformedPoint)
+		polyColor := color.RGBA{R: uint8(b.colRed), G: uint8(b.colGreen), B: uint8(b.colBlue), A: 255}
 
-		c := 240 - int(cosTheta*240)
+		if changeColor {
+			cosTheta := where / GetLength(firstTransformedPoint)
 
-		r1 := int(b.colRed) - c
-		if r1 < 0 {
-			r1 = 0
-		} else if r1 > 255 {
-			r1 = 255
+			c := 240 - int(cosTheta*240)
+
+			r1 := int(b.colRed) - c
+			if r1 < 0 {
+				r1 = 0
+			} else if r1 > 255 {
+				r1 = 255
+			}
+			g1 := int(b.colGreen) - c
+			if g1 < 0 {
+				g1 = 0
+			} else if g1 > 255 {
+				g1 = 255
+			}
+			b1 := int(b.colBlue) - c
+			if b1 < 0 {
+				b1 = 0
+			} else if b1 > 255 {
+				b1 = 255
+			}
+			polyColor = color.RGBA{R: uint8(r1), G: uint8(g1), B: uint8(b1), A: 255}
 		}
-		g1 := int(b.colGreen) - c
-		if g1 < 0 {
-			g1 = 0
-		} else if g1 > 255 {
-			g1 = 255
-		}
-		b1 := int(b.colBlue) - c
-		if b1 < 0 {
-			b1 = 0
-		} else if b1 > 255 {
-			b1 = 255
-		}
-		polyColor := color.RGBA{R: uint8(r1), G: uint8(g1), B: uint8(b1), A: 255}
 		fillConvexPolygon(screen, b.xp, b.yp, polyColor)
 
 		if b.Left != nil {
-			b.Left.Paint(screen, x, y, transPoints, transNormals)
+			b.Left.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
 		}
 	}
 }
 
-func (o *Object_3d) PaintSolid(screen *ebiten.Image, x, y int) {
+func (o *Object_3d) PaintSolid(screen *ebiten.Image, x, y int, lightingChange bool) {
 	if o.root != nil {
-		o.root.Paint(screen, x, y, o.transFaceMesh.Points, o.transNormalMesh.Points)
+		o.root.PaintWithColor(screen, x, y, o.transFaceMesh.Points, o.transNormalMesh.Points, lightingChange)
 	}
 }
 
@@ -742,6 +754,24 @@ func (o *Object_3d) ApplyMatrixTemp(aMatrix *Matrix) {
 	// Use the original method to transform the vertex positions (rotation and translation).
 	rotMatrixTemp.TransformObj(o.faceMesh.Points, o.transFaceMesh.Points)
 }
+
+// ApplyMatrixTemp applies a given matrix directly to the object's base vertices
+// and normals, storing the result in the transient buffers for rendering.
+// It does NOT use or modify the object's internal rotMatrix.
+// func (o *Object_3d) ApplyMatrixTemp(matrix *Matrix) {
+// 	// The problematic multiplication with o.rotMatrix is now removed.
+// 	// We directly use the matrix that is passed in.
+// 	matrix.TransformNormals(o.normalMesh.Points, o.transNormalMesh.Points)
+
+// 	// The normalization step is still good practice.
+// 	for _, n := range o.transNormalMesh.Points.ThisMatrix {
+// 		v := NewVector3dFromArray(n)
+// 		v.Normalize()
+// 		copy(n, v.Normal[:])
+// 	}
+
+// 	matrix.TransformObj(o.faceMesh.Points, o.transFaceMesh.Points)
+// }
 
 func (o *Object_3d) createBspTree(faces *FaceStore, newFaces *FaceMesh, newNormMesh *NormalMesh) *BspNode {
 	if faces.FaceCount() == 0 {
@@ -932,6 +962,98 @@ func NewRectangle(width, height, length float64, clr color.RGBA) *Object_3d {
 	return obj
 }
 
+// NewSubdividedRectangle creates a new Object_3d in the shape of a cuboid where each face
+// is subdivided into a grid of smaller triangles.
+// width, height, length: The dimensions of the cuboid.
+// clr: The color for all faces of the cuboid.
+// subdivisions: The number of divisions along each edge of a face. For example, a value
+//
+//	of 2 will split a face into a 2x2 grid of quads (8 triangles). A value of 1
+//	will result in one quad per face (2 triangles).
+func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdivisions int) *Object_3d {
+	obj := NewObject_3d()
+	w2, h2, l2 := width/2.0, height/2.0, length/2.0
+
+	if subdivisions < 1 {
+		subdivisions = 1 // Ensure at least one subdivision.
+	}
+
+	// generateFace is a helper function that constructs one of the six faces of the cuboid.
+	// It takes an origin point and two vectors (u, v) that define the plane and dimensions
+	// of the face. It then creates a grid of vertices and generates triangles.
+	generateFace := func(origin, u, v [3]float64) {
+		// Create a grid of vertices for the current face.
+		vertices := make([][][3]float64, subdivisions+1)
+		for i := range vertices {
+			vertices[i] = make([][3]float64, subdivisions+1)
+			for j := range vertices[i] {
+				// Calculate the position of vertex (i, j) on the grid plane.
+				ui := float64(i) / float64(subdivisions)
+				vj := float64(j) / float64(subdivisions)
+				vertices[i][j] = [3]float64{
+					origin[0] + ui*u[0] + vj*v[0],
+					origin[1] + ui*u[1] + vj*v[1],
+					origin[2] + ui*u[2] + vj*v[2],
+				}
+			}
+		}
+
+		// Create two triangles for each quad in the subdivision grid.
+		for i := 0; i < subdivisions; i++ {
+			for j := 0; j < subdivisions; j++ {
+				// Get the four corner vertices of the current quad.
+				p1 := vertices[i][j]
+				p2 := vertices[i+1][j]
+				p3 := vertices[i+1][j+1]
+				p4 := vertices[i][j+1]
+
+				// Create the first triangle for the quad (p1, p2, p3).
+				face1 := NewFace(nil, clr, nil)
+				face1.AddPoint(p1[0], p1[1], p1[2])
+				face1.AddPoint(p2[0], p2[1], p2[2])
+				face1.AddPoint(p3[0], p3[1], p3[2])
+				// The vertices are wound counter-clockwise to produce an outward-facing normal.
+				face1.Finished(FACE_NORMAL)
+				obj.theFaces.AddFace(face1)
+
+				// Create the second triangle for the quad (p1, p3, p4).
+				face2 := NewFace(nil, clr, nil)
+				face2.AddPoint(p1[0], p1[1], p1[2])
+				face2.AddPoint(p3[0], p3[1], p3[2])
+				face2.AddPoint(p4[0], p4[1], p4[2])
+				face2.Finished(FACE_NORMAL)
+				obj.theFaces.AddFace(face2)
+			}
+		}
+	}
+
+	// Define the 6 faces of the cuboid by specifying their origin, u-vector, and v-vector.
+	// The u and v vectors are chosen so their cross-product (which determines the normal)
+	// points outwards from the center of the cuboid.
+
+	// Back face (-Z direction)
+	generateFace([3]float64{w2, -h2, -l2}, [3]float64{-width, 0, 0}, [3]float64{0, height, 0})
+
+	// Front face (+Z direction)
+	generateFace([3]float64{-w2, -h2, l2}, [3]float64{width, 0, 0}, [3]float64{0, height, 0})
+
+	// Left face (-X direction)
+	generateFace([3]float64{-w2, -h2, l2}, [3]float64{0, 0, -length}, [3]float64{0, height, 0})
+
+	// Right face (+X direction)
+	generateFace([3]float64{w2, -h2, -l2}, [3]float64{0, 0, length}, [3]float64{0, height, 0})
+
+	// Bottom face (-Y direction)
+	generateFace([3]float64{-w2, -h2, l2}, [3]float64{width, 0, 0}, [3]float64{0, 0, -length})
+
+	// Top face (+Y direction)
+	generateFace([3]float64{-w2, h2, -l2}, [3]float64{width, 0, 0}, [3]float64{0, 0, length})
+
+	// Finalize the object by building its BSP tree.
+	obj.Finished()
+	return obj
+}
+
 // NewSphere creates a new Object_3d in the shape of an icosphere.
 // An icosphere is a sphere made of a mesh of triangles, which is more
 // uniform than a traditional UV sphere.
@@ -1005,7 +1127,7 @@ func NewSphere(radius float64, subdivisions int, clr color.RGBA) *Object_3d {
 			face.AddPoint(normX*radius, normY*radius, normZ*radius)
 		}
 
-		face.Finished(FACE_NORMAL)
+		face.Finished(FACE_REVERSE)
 		obj.theFaces.AddFace(face)
 	}
 
@@ -1055,16 +1177,43 @@ func (c *Camera) AddAngle(x, y float64) {
 	c.camMatrixRev = rotY.MultiplyBy(rotX).MultiplyBy(c.camMatrixRev)
 }
 
+// create a camera at position lookin at another point
+func NewCameraLookAt(x, y, z, lookX, lookY, lookZ float64) *Camera {
+	// Calculate the direction vector from the camera to the look-at point
+	dx := (lookX - x)
+	dy := (lookY - y)
+	dz := (lookZ - z)
+
+	// Normalize the direction vector
+	length := math.Sqrt(dx*dx + dy*dy + dz*dz)
+	if length == 0 {
+		return NewCamera(x, y, z, 0, 0, 0)
+	}
+	dx /= length
+	dy /= length
+	dz /= length
+
+	// Calculate angles based on the direction vector
+	xa := math.Atan2(dy, math.Sqrt(dx*dx+dz*dz)) * (180 / math.Pi)
+	ya := math.Atan2(dx, dz) * (180 / math.Pi)
+
+	return NewCamera(x, y, z, xa, ya, 0)
+}
+
 type World_3d struct {
-	objects       []*Object_3d
-	objXpos       []float64
-	objYpos       []float64
-	objZpos       []float64
-	cameras       []*Camera
-	camXpos       []float64
-	camYpos       []float64
-	camZpos       []float64
-	currentCamera int
+	objects               []*Object_3d
+	objXpos               []float64
+	objYpos               []float64
+	objZpos               []float64
+	cameras               []*Camera
+	camXpos               []float64
+	camYpos               []float64
+	camZpos               []float64
+	currentCamera         int
+	objectToDrawFirst     []*Object_3d
+	objectToDrawFirstXpos []float64
+	objectToDrawFirstYpos []float64
+	objectToDrawFirstZpos []float64
 }
 
 func NewWorld_3d() *World_3d {
@@ -1078,6 +1227,14 @@ func (w *World_3d) AddObject(obj *Object_3d, x, y, z float64) {
 	w.objXpos = append(w.objXpos, x)
 	w.objYpos = append(w.objYpos, y)
 	w.objZpos = append(w.objZpos, z)
+}
+
+// AddObjectDrawFirst
+func (w *World_3d) AddObjectDrawFirst(obj *Object_3d, x, y, z float64) {
+	w.objectToDrawFirst = append(w.objectToDrawFirst, obj)
+	w.objectToDrawFirstXpos = append(w.objectToDrawFirstXpos, x)
+	w.objectToDrawFirstYpos = append(w.objectToDrawFirstYpos, y)
+	w.objectToDrawFirstZpos = append(w.objectToDrawFirstZpos, z)
 }
 
 func (w *World_3d) AddCamera(c *Camera, x, y, z float64) {
@@ -1104,17 +1261,26 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 		distanceI := math.Sqrt(math.Pow(w.objXpos[sortedIndices[i]]-camX, 2) +
 			math.Pow(w.objYpos[sortedIndices[i]]-camY, 2) +
 			math.Pow(w.objZpos[sortedIndices[i]]-camZ, 2))
+
 		distanceJ := math.Sqrt(math.Pow(w.objXpos[sortedIndices[j]]-camX, 2) +
 			math.Pow(w.objYpos[sortedIndices[j]]-camY, 2) +
 			math.Pow(w.objZpos[sortedIndices[j]]-camZ, 2))
+
 		return distanceI > distanceJ
 	})
+
+	// Draw objects that should be drawn first
+	for i, obj := range w.objectToDrawFirst {
+		m := TransMatrix(w.objectToDrawFirstXpos[i]-camX, w.objectToDrawFirstYpos[i]-camY, w.objectToDrawFirstZpos[i]-camZ)
+		obj.ApplyMatrixTemp(cam.camMatrixRev.MultiplyBy(m))
+		obj.PaintSolid(screen, xsize/2, ysize/2, true)
+	}
 
 	for _, i := range sortedIndices {
 		obj := w.objects[i]
 		m := TransMatrix(w.objXpos[i]-camX, w.objYpos[i]-camY, w.objZpos[i]-camZ)
 		obj.ApplyMatrixTemp(cam.camMatrixRev.MultiplyBy(m))
-		obj.PaintSolid(screen, xsize/2, ysize/2)
+		obj.PaintSolid(screen, xsize/2, ysize/2, true)
 	}
 }
 
@@ -1175,32 +1341,137 @@ func NewGame() *Game {
 
 // NewUVSphere creates a sphere based on latitude/longitude rings (sectors and stacks).
 // This structure allows for a perfectly straight horizontal stripe.
+// func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object_3d {
+// 	obj := NewObject_3d()
+
+// 	// We loop through stacks (latitude) and sectors (longitude).
+// 	vertices := make([][3]float64, 0)
+// 	for i := 0; i <= stacks; i++ {
+// 		stackAngle := math.Pi/2 - float64(i)*math.Pi/float64(stacks) // phi
+// 		xy := radius * math.Cos(stackAngle)
+// 		z := radius * math.Sin(stackAngle)
+
+// 		for j := 0; j <= sectors; j++ {
+// 			sectorAngle := float64(j) * 2 * math.Pi / float64(sectors) // theta
+// 			x := xy * math.Cos(sectorAngle)
+// 			y := xy * math.Sin(sectorAngle)
+// 			vertices = append(vertices, [3]float64{x, y, z})
+// 		}
+// 	}
+
+// 	// Determine the start and end stacks for the stripe.
+// 	// The stripe is centered around the equator (the middle stack).
+// 	middleStack := stacks / 2
+// 	stripeStart := middleStack - (stripeStacks / 2)
+// 	stripeEnd := middleStack + (stripeStacks / 2)
+
+// 	for i := 0; i < stacks; i++ {
+// 		// Determine the color for this entire ring of faces.
+// 		var faceColor color.RGBA
+// 		if i >= stripeStart && i < stripeEnd {
+// 			faceColor = stripeClr
+// 		} else {
+// 			faceColor = bodyClr
+// 		}
+
+// 		k1 := i * (sectors + 1)
+// 		k2 := k1 + sectors + 1
+
+// 		for j := 0; j < sectors; j++ {
+// 			k1j := k1 + j
+// 			k1j1 := k1j + 1
+// 			k2j := k2 + j
+// 			k2j1 := k2j + 1
+
+// 			// For each quad, we create two triangles.
+// 			// Special handling for the poles.
+// 			if i != 0 {
+// 				// First triangle of the quad
+// 				f1 := NewFace(nil, faceColor, nil)
+// 				f1.AddPoint(vertices[k1j][0], vertices[k1j][1], vertices[k1j][2])
+// 				f1.AddPoint(vertices[k2j][0], vertices[k2j][1], vertices[k2j][2])
+// 				f1.AddPoint(vertices[k1j1][0], vertices[k1j1][1], vertices[k1j1][2])
+// 				f1.Finished(FACE_NORMAL)
+// 				obj.theFaces.AddFace(f1)
+// 			}
+
+// 			if i != (stacks - 1) {
+// 				// Second triangle of the quad
+// 				f2 := NewFace(nil, faceColor, nil)
+// 				f2.AddPoint(vertices[k1j1][0], vertices[k1j1][1], vertices[k1j1][2])
+// 				f2.AddPoint(vertices[k2j][0], vertices[k2j][1], vertices[k2j][2])
+// 				f2.AddPoint(vertices[k2j1][0], vertices[k2j1][1], vertices[k2j1][2])
+// 				f2.Finished(FACE_NORMAL)
+// 				obj.theFaces.AddFace(f2)
+// 			}
+// 		}
+// 	}
+
+// 	// 3. Finalize the object by building its BSP tree.
+// 	obj.Finished()
+// 	return obj
+// }
+
+// NewUVSphere creates a sphere based on latitude/longitude rings (sectors and stacks).
+// This structure allows for a perfectly straight horizontal stripe.
 func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object_3d {
 	obj := NewObject_3d()
 
-	// We loop through stacks (latitude) and sectors (longitude).
 	vertices := make([][3]float64, 0)
 	for i := 0; i <= stacks; i++ {
-		stackAngle := math.Pi/2 - float64(i)*math.Pi/float64(stacks) // phi
+		stackAngle := math.Pi/2 - float64(i)*math.Pi/float64(stacks)
 		xy := radius * math.Cos(stackAngle)
 		z := radius * math.Sin(stackAngle)
 
 		for j := 0; j <= sectors; j++ {
-			sectorAngle := float64(j) * 2 * math.Pi / float64(sectors) // theta
+			sectorAngle := float64(j) * 2 * math.Pi / float64(sectors)
 			x := xy * math.Cos(sectorAngle)
 			y := xy * math.Sin(sectorAngle)
 			vertices = append(vertices, [3]float64{x, y, z})
 		}
 	}
 
-	// Determine the start and end stacks for the stripe.
-	// The stripe is centered around the equator (the middle stack).
 	middleStack := stacks / 2
 	stripeStart := middleStack - (stripeStacks / 2)
 	stripeEnd := middleStack + (stripeStacks / 2)
 
+	// A helper function to create a face and set its normal correctly
+	createFace := func(p1, p2, p3 [3]float64, clr color.RGBA) *Face {
+		face := NewFace(nil, clr, nil)
+		face.AddPoint(p1[0], p1[1], p1[2])
+		face.AddPoint(p2[0], p2[1], p2[2])
+		face.AddPoint(p3[0], p3[1], p3[2])
+
+		// === THE FIX IS HERE ===
+		// Instead of relying on automatic normal creation, we calculate the
+		// true geometric normal for the face.
+
+		// 1. Find the center of the triangle face.
+		centerX := (p1[0] + p2[0] + p3[0]) / 3.0
+		centerY := (p1[1] + p2[1] + p3[1]) / 3.0
+		centerZ := (p1[2] + p2[2] + p3[2]) / 3.0
+
+		// 2. The normal is the vector from the sphere's center (0,0,0) to the face's center, normalized.
+		normalVec := []float64{centerX, centerY, centerZ, 0.0}
+		length := GetLength(normalVec)
+		if length > 0 {
+			normalVec[0] /= length
+			normalVec[1] /= length
+			normalVec[2] /= length
+		}
+
+		normalVec[0] *= -1
+		normalVec[1] *= -1
+		normalVec[2] *= -1
+
+		// 3. Explicitly set this perfect normal on the face.
+		face.SetNormal(normalVec)
+		// We no longer need the FACE_NORMAL/FACE_REVERSE flag.
+		face.Finished(FACE_REVERSE)
+		return face
+	}
+
 	for i := 0; i < stacks; i++ {
-		// Determine the color for this entire ring of faces.
 		var faceColor color.RGBA
 		if i >= stripeStart && i < stripeEnd {
 			faceColor = stripeClr
@@ -1212,36 +1483,24 @@ func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.R
 		k2 := k1 + sectors + 1
 
 		for j := 0; j < sectors; j++ {
-			k1j := k1 + j
-			k1j1 := k1j + 1
-			k2j := k2 + j
-			k2j1 := k2j + 1
+			// Get the four vertices for the quad on the sphere surface
+			v1 := vertices[k1+j]
+			v2 := vertices[k2+j]
+			v3 := vertices[k1+j+1]
+			v4 := vertices[k2+j+1]
 
-			// For each quad, we create two triangles.
-			// Special handling for the poles.
 			if i != 0 {
-				// First triangle of the quad
-				f1 := NewFace(nil, faceColor, nil)
-				f1.AddPoint(vertices[k1j][0], vertices[k1j][1], vertices[k1j][2])
-				f1.AddPoint(vertices[k2j][0], vertices[k2j][1], vertices[k2j][2])
-				f1.AddPoint(vertices[k1j1][0], vertices[k1j1][1], vertices[k1j1][2])
-				f1.Finished(FACE_NORMAL)
-				obj.theFaces.AddFace(f1)
+				// First triangle of the quad: v1, v2, v3
+				obj.theFaces.AddFace(createFace(v1, v2, v3, faceColor))
 			}
 
 			if i != (stacks - 1) {
-				// Second triangle of the quad
-				f2 := NewFace(nil, faceColor, nil)
-				f2.AddPoint(vertices[k1j1][0], vertices[k1j1][1], vertices[k1j1][2])
-				f2.AddPoint(vertices[k2j][0], vertices[k2j][1], vertices[k2j][2])
-				f2.AddPoint(vertices[k2j1][0], vertices[k2j1][1], vertices[k2j1][2])
-				f2.Finished(FACE_NORMAL)
-				obj.theFaces.AddFace(f2)
+				// Second triangle of the quad: v3, v2, v4
+				obj.theFaces.AddFace(createFace(v3, v2, v4, faceColor))
 			}
 		}
 	}
 
-	// 3. Finalize the object by building its BSP tree.
 	obj.Finished()
 	return obj
 }
@@ -1265,39 +1524,84 @@ func (g *Game) Update() error {
 		// transpose. Therefore, the columns of the view matrix represent the
 		// camera's axes (right, up, forward) in world space.
 
-		// Right vector is the first column of the view matrix.
-		rightVecX := cam.camMatrixRev.ThisMatrix[0][0]
-		rightVecY := cam.camMatrixRev.ThisMatrix[1][0]
-		rightVecZ := cam.camMatrixRev.ThisMatrix[2][0]
+		// // Right vector is the first column of the view matrix.
+		// rightVecX := cam.camMatrixRev.ThisMatrix[0][0]
+		// rightVecY := cam.camMatrixRev.ThisMatrix[1][0]
+		// rightVecZ := cam.camMatrixRev.ThisMatrix[2][0]
 
-		// Forward vector is the third column of the view matrix.
-		// Note: In a right-handed coordinate system, the camera looks down its
-		// negative Z-axis, but the "forward" direction for movement is typically
-		// along the positive Z-axis of the camera's coordinate space.
-		forwardVecX := cam.camMatrixRev.ThisMatrix[0][2]
-		forwardVecY := cam.camMatrixRev.ThisMatrix[1][2]
-		forwardVecZ := cam.camMatrixRev.ThisMatrix[2][2]
+		// // Forward vector is the third column of the view matrix.
+		// // Note: In a right-handed coordinate system, the camera looks down its
+		// // negative Z-axis, but the "forward" direction for movement is typically
+		// // along the positive Z-axis of the camera's coordinate space.
+		// forwardVecX := cam.camMatrixRev.ThisMatrix[0][2]
+		// forwardVecY := cam.camMatrixRev.ThisMatrix[1][2]
+		// forwardVecZ := cam.camMatrixRev.ThisMatrix[2][2]
+
+		// // Handle keyboard input for movement
+		// if ebiten.IsKeyPressed(ebiten.KeyW) { // Move forward
+		// 	g.world.camXpos[g.world.currentCamera] += forwardVecX * moveSpeed
+		// 	g.world.camYpos[g.world.currentCamera] += forwardVecY * moveSpeed
+		// 	g.world.camZpos[g.world.currentCamera] += forwardVecZ * moveSpeed
+		// }
+		// if ebiten.IsKeyPressed(ebiten.KeyS) { // Move backward
+		// 	g.world.camXpos[g.world.currentCamera] -= forwardVecX * moveSpeed
+		// 	g.world.camYpos[g.world.currentCamera] -= forwardVecY * moveSpeed
+		// 	g.world.camZpos[g.world.currentCamera] -= forwardVecZ * moveSpeed
+		// }
+		// if ebiten.IsKeyPressed(ebiten.KeyA) { // Strafe left
+		// 	g.world.camXpos[g.world.currentCamera] -= rightVecX * moveSpeed
+		// 	g.world.camYpos[g.world.currentCamera] -= rightVecY * moveSpeed
+		// 	g.world.camZpos[g.world.currentCamera] -= rightVecZ * moveSpeed
+		// }
+		// if ebiten.IsKeyPressed(ebiten.KeyD) { // Strafe right
+		// 	g.world.camXpos[g.world.currentCamera] += rightVecX * moveSpeed
+		// 	g.world.camYpos[g.world.currentCamera] += rightVecY * moveSpeed
+		// 	g.world.camZpos[g.world.currentCamera] += rightVecZ * moveSpeed
+		// }
+
+		// The camera's view matrix
+		viewMatrix := cam.GetMatrix().ThisMatrix
+
+		// Right vector is the FIRST ROW of the matrix
+		rightVecX := viewMatrix[0][0]
+		rightVecY := viewMatrix[0][1]
+		rightVecZ := viewMatrix[0][2]
+
+		// Forward vector is the THIRD ROW of the matrix
+		// (In a right-handed view matrix, the Z-axis row points away from what you're looking at)
+		forwardVecX := viewMatrix[2][0]
+		forwardVecY := viewMatrix[2][1]
+		forwardVecZ := viewMatrix[2][2]
 
 		// Handle keyboard input for movement
 		if ebiten.IsKeyPressed(ebiten.KeyW) { // Move forward
-			g.world.camXpos[g.world.currentCamera] += forwardVecX * moveSpeed
-			g.world.camYpos[g.world.currentCamera] += forwardVecY * moveSpeed
-			g.world.camZpos[g.world.currentCamera] += forwardVecZ * moveSpeed
+			// Pressing W should move you IN THE OPPOSITE direction of the forward vector
+			cam.SetCameraPosition(
+				cam.GetPosition().GetX()-forwardVecX*moveSpeed,
+				cam.GetPosition().GetY()-forwardVecY*moveSpeed,
+				cam.GetPosition().GetZ()-forwardVecZ*moveSpeed,
+			)
 		}
 		if ebiten.IsKeyPressed(ebiten.KeyS) { // Move backward
-			g.world.camXpos[g.world.currentCamera] -= forwardVecX * moveSpeed
-			g.world.camYpos[g.world.currentCamera] -= forwardVecY * moveSpeed
-			g.world.camZpos[g.world.currentCamera] -= forwardVecZ * moveSpeed
+			cam.SetCameraPosition(
+				cam.GetPosition().GetX()+forwardVecX*moveSpeed,
+				cam.GetPosition().GetY()+forwardVecY*moveSpeed,
+				cam.GetPosition().GetZ()+forwardVecZ*moveSpeed,
+			)
 		}
 		if ebiten.IsKeyPressed(ebiten.KeyA) { // Strafe left
-			g.world.camXpos[g.world.currentCamera] -= rightVecX * moveSpeed
-			g.world.camYpos[g.world.currentCamera] -= rightVecY * moveSpeed
-			g.world.camZpos[g.world.currentCamera] -= rightVecZ * moveSpeed
+			cam.SetCameraPosition(
+				cam.GetPosition().GetX()-rightVecX*moveSpeed,
+				cam.GetPosition().GetY()-rightVecY*moveSpeed,
+				cam.GetPosition().GetZ()-rightVecZ*moveSpeed,
+			)
 		}
 		if ebiten.IsKeyPressed(ebiten.KeyD) { // Strafe right
-			g.world.camXpos[g.world.currentCamera] += rightVecX * moveSpeed
-			g.world.camYpos[g.world.currentCamera] += rightVecY * moveSpeed
-			g.world.camZpos[g.world.currentCamera] += rightVecZ * moveSpeed
+			cam.SetCameraPosition(
+				cam.GetPosition().GetX()+rightVecX*moveSpeed,
+				cam.GetPosition().GetY()+rightVecY*moveSpeed,
+				cam.GetPosition().GetZ()+rightVecZ*moveSpeed,
+			)
 		}
 	}
 	// --- END of new code for camera movement ---
