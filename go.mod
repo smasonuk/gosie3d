@@ -1,4 +1,4 @@
-module gosie3d
+module github.com/smasonuk/gosie3d
 
 go 1.23.4
 
