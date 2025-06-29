@@ -1014,23 +1014,45 @@ func NewSphere(radius float64, subdivisions int, clr color.RGBA) *Object_3d {
 }
 
 type Camera struct {
-	CamMatrixRev *Matrix
+	camMatrixRev   *Matrix
+	cameraPosition *Point3d
 }
 
-func NewCamera(xa, ya, za float64) *Camera {
+func NewCamera(xp, yp, zp, xa, ya, za float64) *Camera {
 	c := &Camera{}
 	x := NewRotationMatrix(ROTX, -xa)
 	y := NewRotationMatrix(ROTY, -ya)
 	z := NewRotationMatrix(ROTZ, -za)
-	c.CamMatrixRev = z.MultiplyBy(y)
-	c.CamMatrixRev = c.CamMatrixRev.MultiplyBy(x)
+	c.camMatrixRev = z.MultiplyBy(y)
+	c.camMatrixRev = c.camMatrixRev.MultiplyBy(x)
+	c.cameraPosition = NewPoint3d(xp, yp, zp)
+
 	return c
+}
+
+func (c *Camera) GetPosition() *Point3d {
+	if c.cameraPosition == nil {
+		return NewPoint3d(0, 0, 0)
+	}
+	return c.cameraPosition
+}
+
+func (c *Camera) SetCameraPosition(x, y, z float64) {
+	c.cameraPosition = NewPoint3d(x, y, z)
+}
+
+func (c *Camera) GetMatrix() *Matrix {
+	return c.camMatrixRev
+}
+
+func (c *Camera) SetMatrix(m *Matrix) {
+	c.camMatrixRev = m
 }
 
 func (c *Camera) AddAngle(x, y float64) {
 	rotY := NewRotationMatrix(ROTY, -y)
 	rotX := NewRotationMatrix(ROTX, -x)
-	c.CamMatrixRev = rotY.MultiplyBy(rotX).MultiplyBy(c.CamMatrixRev)
+	c.camMatrixRev = rotY.MultiplyBy(rotX).MultiplyBy(c.camMatrixRev)
 }
 
 type World_3d struct {
@@ -1091,7 +1113,7 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 	for _, i := range sortedIndices {
 		obj := w.objects[i]
 		m := TransMatrix(w.objXpos[i]-camX, w.objYpos[i]-camY, w.objZpos[i]-camZ)
-		obj.ApplyMatrixTemp(cam.CamMatrixRev.MultiplyBy(m))
+		obj.ApplyMatrixTemp(cam.camMatrixRev.MultiplyBy(m))
 		obj.PaintSolid(screen, xsize/2, ysize/2)
 	}
 }
@@ -1116,7 +1138,7 @@ func NewGame() *Game {
 	g := &Game{}
 	log.Println("Initializing World...")
 	g.world = NewWorld_3d()
-	theCamera := NewCamera(0, 0, 0)
+	theCamera := NewCamera(0, 0, 0, 0, 0, 0)
 	g.world.AddCamera(theCamera, 0, 0, 0)
 
 	log.Println("Creating Cube...")
@@ -1244,17 +1266,17 @@ func (g *Game) Update() error {
 		// camera's axes (right, up, forward) in world space.
 
 		// Right vector is the first column of the view matrix.
-		rightVecX := cam.CamMatrixRev.ThisMatrix[0][0]
-		rightVecY := cam.CamMatrixRev.ThisMatrix[1][0]
-		rightVecZ := cam.CamMatrixRev.ThisMatrix[2][0]
+		rightVecX := cam.camMatrixRev.ThisMatrix[0][0]
+		rightVecY := cam.camMatrixRev.ThisMatrix[1][0]
+		rightVecZ := cam.camMatrixRev.ThisMatrix[2][0]
 
 		// Forward vector is the third column of the view matrix.
 		// Note: In a right-handed coordinate system, the camera looks down its
 		// negative Z-axis, but the "forward" direction for movement is typically
 		// along the positive Z-axis of the camera's coordinate space.
-		forwardVecX := cam.CamMatrixRev.ThisMatrix[0][2]
-		forwardVecY := cam.CamMatrixRev.ThisMatrix[1][2]
-		forwardVecZ := cam.CamMatrixRev.ThisMatrix[2][2]
+		forwardVecX := cam.camMatrixRev.ThisMatrix[0][2]
+		forwardVecY := cam.camMatrixRev.ThisMatrix[1][2]
+		forwardVecZ := cam.camMatrixRev.ThisMatrix[2][2]
 
 		// Handle keyboard input for movement
 		if ebiten.IsKeyPressed(ebiten.KeyW) { // Move forward
