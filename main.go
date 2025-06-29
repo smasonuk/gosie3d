@@ -353,15 +353,18 @@ func NewMesh() *Mesh {
 	return &Mesh{Points: NewMatrix()}
 }
 
-func (m *Mesh) AddPoint(point []float64) []float64 {
-	ret := m.Points.FindPoints(point[0], point[1], point[2])
-	if ret != nil {
-		return ret
+func (m *Mesh) AddPoint(point []float64) ([]float64, int) {
+	for i, p := range m.Points.ThisMatrix {
+		if p[0] == point[0] && p[1] == point[1] && p[2] == point[2] {
+			return p, i
+		}
 	}
+
 	pointCopy := make([]float64, len(point))
 	copy(pointCopy, point)
 	m.Points.AddRow(pointCopy)
-	return pointCopy
+	newIndex := len(m.Points.ThisMatrix) - 1
+	return pointCopy, newIndex
 }
 
 func (m *Mesh) Copy() *Mesh {
@@ -378,12 +381,13 @@ func NewFaceMesh() *FaceMesh {
 	return &FaceMesh{Mesh: *NewMesh()}
 }
 
-func (fm *FaceMesh) AddFace(f *Face) *Face {
+func (fm *FaceMesh) AddFace(f *Face) (*Face, []int) { // Return indices
 	newPoints := make([][]float64, len(f.Points))
+	indices := make([]int, len(f.Points))
 	for i, p := range f.Points {
-		newPoints[i] = fm.AddPoint(p)
+		newPoints[i], indices[i] = fm.AddPoint(p) // Capture the returned index
 	}
-	return NewFace(newPoints, f.Col, f.GetNormal())
+	return NewFace(newPoints, f.Col, f.GetNormal()), indices
 }
 
 func (fm *FaceMesh) Copy() *FaceMesh {
@@ -398,7 +402,8 @@ func NewNormalMesh() *NormalMesh {
 	return &NormalMesh{Mesh: *NewMesh()}
 }
 
-func (nm *NormalMesh) AddNormal(pnts []float64) []float64 {
+func (nm *NormalMesh) AddNormal(pnts []float64) ([]float64, int) {
+	// The previous fix was a patch. This is the correct implementation.
 	return nm.AddPoint(pnts)
 }
 
@@ -563,65 +568,77 @@ func (p *Plane) Where(f *Face) float64 {
 }
 
 type BspNode struct {
-	facePnts [][]float64
-	normal   []float64
-	Left     *BspNode
-	Right    *BspNode
-	colRed   uint8
-	colGreen uint8
-	colBlue  uint8
-	xp       []float32
-	yp       []float32
+	normal           []float64
+	Left             *BspNode
+	Right            *BspNode
+	colRed           uint8
+	colGreen         uint8
+	colBlue          uint8
+	facePointIndices []int
+	xp               []float32
+	yp               []float32
+
+	normalIndex int
 }
 
-func NewBspNode(f *Face) *BspNode {
+func NewBspNode(facePoints [][]float64, faceNormal []float64, faceColor color.RGBA, pointIndices []int, normalIdx int) *BspNode {
 	b := &BspNode{
-		facePnts: f.Points,
-		normal:   f.GetNormal(),
-		xp:       make([]float32, len(f.Points)),
-		yp:       make([]float32, len(f.Points)),
+		normal:           faceNormal, // We can still keep the original for other uses if needed
+		colRed:           faceColor.R,
+		colGreen:         faceColor.G,
+		colBlue:          faceColor.B,
+		facePointIndices: pointIndices,
+		normalIndex:      normalIdx,
+		xp:               make([]float32, len(facePoints)),
+		yp:               make([]float32, len(facePoints)),
 	}
-	b.colRed = f.Col.R
-	b.colGreen = f.Col.G
-	b.colBlue = f.Col.B
 	return b
 }
 
-// Reverted to a faithful translation of the original Java paint logic
-func (b *BspNode) Paint(screen *ebiten.Image, x, y int) {
-	if len(b.facePnts) == 0 {
+// In BspNode.Paint, change the signature and logic
+func (b *BspNode) Paint(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix) {
+	if len(b.facePointIndices) == 0 {
 		return
 	}
-	// The `where` variable is effectively a back-face culling check.
-	where := b.normal[0]*b.facePnts[0][0] + b.normal[1]*b.facePnts[0][1] + b.normal[2]*b.facePnts[0][2]
+
+	transformedNormal := transNormals.ThisMatrix[b.normalIndex]
+
+	// Look up the first transformed point of the face.
+	firstTransformedPoint := transPoints.ThisMatrix[b.facePointIndices[0]]
+
+	// Perform the dot product using two vectors that are now in the SAME coordinate space.
+	where := transformedNormal[0]*firstTransformedPoint[0] + transformedNormal[1]*firstTransformedPoint[1] + transformedNormal[2]*firstTransformedPoint[2]
 
 	if where <= 0 {
-		// Back-facing, don't draw self, just traverse children.
 		if b.Left != nil {
-			b.Left.Paint(screen, x, y)
+			b.Left.Paint(screen, x, y, transPoints, transNormals)
 		}
 		if b.Right != nil {
-			b.Right.Paint(screen, x, y)
+			b.Right.Paint(screen, x, y, transPoints, transNormals)
 		}
 	} else {
-		// Front-facing, draw in a specific order.
 		if b.Right != nil {
-			b.Right.Paint(screen, x, y)
+			b.Right.Paint(screen, x, y, transPoints, transNormals)
 		}
 
-		for i := 0; i < len(b.facePnts); i++ {
-			if b.facePnts[i][2] < 0 {
+		// Project the points for this polygon
+		for i, pointIndex := range b.facePointIndices {
+			// Look up the transformed point using its index!
+			pnt := transPoints.ThisMatrix[pointIndex]
+			if pnt[2] < 0 { // Z-clipping
 				if b.Left != nil {
-					b.Left.Paint(screen, x, y)
+					b.Left.Paint(screen, x, y, transPoints, transNormals)
 				}
 				return
 			}
-			b.xp[i] = float32((400*b.facePnts[i][0])/b.facePnts[i][2]) + float32(x)
-			b.yp[i] = float32((400*b.facePnts[i][1])/b.facePnts[i][2]) + float32(y)
+			b.xp[i] = float32((400*pnt[0])/pnt[2]) + float32(x)
+			b.yp[i] = float32((400*pnt[1])/pnt[2]) + float32(y)
 		}
 
-		cosTheta := where / GetLength(b.facePnts[0])
+		cosTheta := where / GetLength(firstTransformedPoint)
+
 		c := 240 - int(cosTheta*240)
+
 		r1 := int(b.colRed) - c
 		if r1 < 0 {
 			r1 = 0
@@ -644,8 +661,14 @@ func (b *BspNode) Paint(screen *ebiten.Image, x, y int) {
 		fillConvexPolygon(screen, b.xp, b.yp, polyColor)
 
 		if b.Left != nil {
-			b.Left.Paint(screen, x, y)
+			b.Left.Paint(screen, x, y, transPoints, transNormals)
 		}
+	}
+}
+
+func (o *Object_3d) PaintSolid(screen *ebiten.Image, x, y int) {
+	if o.root != nil {
+		o.root.Paint(screen, x, y, o.transFaceMesh.Points, o.transNormalMesh.Points)
 	}
 }
 
@@ -670,13 +693,16 @@ func NewObject_3d() *Object_3d {
 
 func (o *Object_3d) Clone() *Object_3d {
 	clone := &Object_3d{
-		faceMesh:        o.faceMesh,
-		normalMesh:      o.normalMesh,
+		// shared
+		faceMesh:   o.faceMesh,
+		normalMesh: o.normalMesh,
+		theFaces:   o.theFaces,
+		root:       o.root,
+
+		// instance-specific
 		transFaceMesh:   o.transFaceMesh.Copy(),
 		transNormalMesh: o.transNormalMesh.Copy(),
-		theFaces:        o.theFaces,
-		root:            o.root, // Note: This will not clone the BSP tree.
-		rotMatrix:       o.rotMatrix.Copy(),
+		rotMatrix:       IdentMatrix(),
 	}
 	return clone
 }
@@ -717,28 +743,27 @@ func (o *Object_3d) ApplyMatrixTemp(aMatrix *Matrix) {
 	rotMatrixTemp.TransformObj(o.faceMesh.Points, o.transFaceMesh.Points)
 }
 
-func (o *Object_3d) PaintSolid(screen *ebiten.Image, x, y int) {
-	if o.root != nil {
-		o.root.Paint(screen, x, y)
-	}
-}
-
 func (o *Object_3d) createBspTree(faces *FaceStore, newFaces *FaceMesh, newNormMesh *NormalMesh) *BspNode {
 	if faces.FaceCount() == 0 {
 		return nil
 	}
+
 	parentFace := o.choosePlane(faces)
-	parentFace.SetNormal(newNormMesh.AddNormal(parentFace.GetNormal()))
-	newFace := newFaces.AddFace(parentFace)
-	parent := NewBspNode(newFace)
+	originalNormal, normalIndex := newNormMesh.AddNormal(parentFace.GetNormal())
+	parentFace.SetNormal(originalNormal)
+	newFace, parentIndices := newFaces.AddFace(parentFace)
+	parent := NewBspNode(newFace.Points, newFace.GetNormal(), newFace.Col, parentIndices, normalIndex)
 	pPlane := NewPlane(newFace, newFace.GetNormal())
 
+	// Create two new lists to hold the faces that fall on either side of the plane.
 	fvLeft := NewFaceStore()
 	fvRight := NewFaceStore()
 
+	// Partition the *remaining* faces against the splitting plane.
 	for a := 0; a < faces.FaceCount(); a++ {
 		currentFace := faces.GetFace(a)
 		if pPlane.FaceIntersect(currentFace) {
+			// If the face is split by the plane...
 			split := pPlane.SplitFace(currentFace)
 			if split == nil {
 				continue
@@ -753,6 +778,7 @@ func (o *Object_3d) createBspTree(faces *FaceStore, newFaces *FaceMesh, newNormM
 				}
 			}
 		} else {
+			// If the face is entirely on one side...
 			w := pPlane.Where(currentFace)
 			if w <= 0 {
 				fvLeft.AddFace(currentFace)
@@ -762,12 +788,14 @@ func (o *Object_3d) createBspTree(faces *FaceStore, newFaces *FaceMesh, newNormM
 		}
 	}
 
+	// Build the left and right sub-trees from the new lists.
 	if fvLeft.FaceCount() > 0 {
 		parent.Left = o.createBspTree(fvLeft, newFaces, newNormMesh)
 	}
 	if fvRight.FaceCount() > 0 {
 		parent.Right = o.createBspTree(fvRight, newFaces, newNormMesh)
 	}
+
 	return parent
 }
 
@@ -1183,8 +1211,14 @@ func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.R
 func (g *Game) Update() error {
 	// s := NewForwardMatrix(math.Sin(g.i)/8/5, math.Cos(g.p)/8/5, math.Cos(g.i+1.14)/8/5)
 	// g.cube.ApplyMatrixBatch(s)
+
 	g.i += 0.02
 	g.p += 0.05
+
+	for index, obj := range g.world.objects {
+		s := NewForwardMatrix(math.Sin(g.i+float64(index))/8/5, math.Cos(g.p)/8/5, math.Cos(g.i+1.14)/8/5)
+		obj.ApplyMatrixBatch(s)
+	}
 
 	x, y := ebiten.CursorPosition()
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
