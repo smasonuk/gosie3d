@@ -599,10 +599,6 @@ func (b *BspNode) PaintWithoutColorChange(screen *ebiten.Image, x, y int, transP
 	b.PaintWithColor(screen, x, y, transPoints, transNormals, false)
 }
 
-// func (b *BspNode) Paint(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix) {
-// 	b.PaintWithColor(screen, x, y, transPoints, transNormals, true)
-// }
-
 // In BspNode.Paint, change the signature and logic
 func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix, changeColor bool) {
 	if len(b.facePointIndices) == 0 {
@@ -615,7 +611,10 @@ func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Ma
 	firstTransformedPoint := transPoints.ThisMatrix[b.facePointIndices[0]]
 
 	// Perform the dot product using two vectors that are now in the SAME coordinate space.
-	where := transformedNormal[0]*firstTransformedPoint[0] + transformedNormal[1]*firstTransformedPoint[1] + transformedNormal[2]*firstTransformedPoint[2]
+	// this is also used in the lighting calculation to determine the angle of the face relative to the POSITION of camera (doesn't take into account the direction of the camera).
+	where := transformedNormal[0]*firstTransformedPoint[0] +
+		transformedNormal[1]*firstTransformedPoint[1] +
+		transformedNormal[2]*firstTransformedPoint[2]
 
 	if where <= 0 {
 		if b.Left != nil {
@@ -650,24 +649,10 @@ func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Ma
 
 			c := 240 - int(cosTheta*240)
 
-			r1 := int(b.colRed) - c
-			if r1 < 0 {
-				r1 = 0
-			} else if r1 > 255 {
-				r1 = 255
-			}
-			g1 := int(b.colGreen) - c
-			if g1 < 0 {
-				g1 = 0
-			} else if g1 > 255 {
-				g1 = 255
-			}
-			b1 := int(b.colBlue) - c
-			if b1 < 0 {
-				b1 = 0
-			} else if b1 > 255 {
-				b1 = 255
-			}
+			min := 7
+			r1 := clamp(int(b.colRed)-c, min, 255)
+			g1 := clamp(int(b.colGreen)-c, min, 255)
+			b1 := clamp(int(b.colBlue)-c, min, 255)
 			polyColor = color.RGBA{R: uint8(r1), G: uint8(g1), B: uint8(b1), A: 255}
 		}
 		fillConvexPolygon(screen, b.xp, b.yp, polyColor)
@@ -676,6 +661,16 @@ func (b *BspNode) PaintWithColor(screen *ebiten.Image, x, y int, transPoints *Ma
 			b.Left.PaintWithColor(screen, x, y, transPoints, transNormals, changeColor)
 		}
 	}
+}
+
+func clamp(value, min, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
 }
 
 func (o *Object_3d) PaintSolid(screen *ebiten.Image, x, y int, lightingChange bool) {
@@ -754,24 +749,6 @@ func (o *Object_3d) ApplyMatrixTemp(aMatrix *Matrix) {
 	// Use the original method to transform the vertex positions (rotation and translation).
 	rotMatrixTemp.TransformObj(o.faceMesh.Points, o.transFaceMesh.Points)
 }
-
-// ApplyMatrixTemp applies a given matrix directly to the object's base vertices
-// and normals, storing the result in the transient buffers for rendering.
-// It does NOT use or modify the object's internal rotMatrix.
-// func (o *Object_3d) ApplyMatrixTemp(matrix *Matrix) {
-// 	// The problematic multiplication with o.rotMatrix is now removed.
-// 	// We directly use the matrix that is passed in.
-// 	matrix.TransformNormals(o.normalMesh.Points, o.transNormalMesh.Points)
-
-// 	// The normalization step is still good practice.
-// 	for _, n := range o.transNormalMesh.Points.ThisMatrix {
-// 		v := NewVector3dFromArray(n)
-// 		v.Normalize()
-// 		copy(n, v.Normal[:])
-// 	}
-
-// 	matrix.TransformObj(o.faceMesh.Points, o.transFaceMesh.Points)
-// }
 
 func (o *Object_3d) createBspTree(faces *FaceStore, newFaces *FaceMesh, newNormMesh *NormalMesh) *BspNode {
 	if faces.FaceCount() == 0 {
@@ -1341,80 +1318,78 @@ func NewGame() *Game {
 
 // NewUVSphere creates a sphere based on latitude/longitude rings (sectors and stacks).
 // This structure allows for a perfectly straight horizontal stripe.
-// func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object_3d {
-// 	obj := NewObject_3d()
-
-// 	// We loop through stacks (latitude) and sectors (longitude).
-// 	vertices := make([][3]float64, 0)
-// 	for i := 0; i <= stacks; i++ {
-// 		stackAngle := math.Pi/2 - float64(i)*math.Pi/float64(stacks) // phi
-// 		xy := radius * math.Cos(stackAngle)
-// 		z := radius * math.Sin(stackAngle)
-
-// 		for j := 0; j <= sectors; j++ {
-// 			sectorAngle := float64(j) * 2 * math.Pi / float64(sectors) // theta
-// 			x := xy * math.Cos(sectorAngle)
-// 			y := xy * math.Sin(sectorAngle)
-// 			vertices = append(vertices, [3]float64{x, y, z})
-// 		}
-// 	}
-
-// 	// Determine the start and end stacks for the stripe.
-// 	// The stripe is centered around the equator (the middle stack).
-// 	middleStack := stacks / 2
-// 	stripeStart := middleStack - (stripeStacks / 2)
-// 	stripeEnd := middleStack + (stripeStacks / 2)
-
-// 	for i := 0; i < stacks; i++ {
-// 		// Determine the color for this entire ring of faces.
-// 		var faceColor color.RGBA
-// 		if i >= stripeStart && i < stripeEnd {
-// 			faceColor = stripeClr
-// 		} else {
-// 			faceColor = bodyClr
-// 		}
-
-// 		k1 := i * (sectors + 1)
-// 		k2 := k1 + sectors + 1
-
-// 		for j := 0; j < sectors; j++ {
-// 			k1j := k1 + j
-// 			k1j1 := k1j + 1
-// 			k2j := k2 + j
-// 			k2j1 := k2j + 1
-
-// 			// For each quad, we create two triangles.
-// 			// Special handling for the poles.
-// 			if i != 0 {
-// 				// First triangle of the quad
-// 				f1 := NewFace(nil, faceColor, nil)
-// 				f1.AddPoint(vertices[k1j][0], vertices[k1j][1], vertices[k1j][2])
-// 				f1.AddPoint(vertices[k2j][0], vertices[k2j][1], vertices[k2j][2])
-// 				f1.AddPoint(vertices[k1j1][0], vertices[k1j1][1], vertices[k1j1][2])
-// 				f1.Finished(FACE_NORMAL)
-// 				obj.theFaces.AddFace(f1)
-// 			}
-
-// 			if i != (stacks - 1) {
-// 				// Second triangle of the quad
-// 				f2 := NewFace(nil, faceColor, nil)
-// 				f2.AddPoint(vertices[k1j1][0], vertices[k1j1][1], vertices[k1j1][2])
-// 				f2.AddPoint(vertices[k2j][0], vertices[k2j][1], vertices[k2j][2])
-// 				f2.AddPoint(vertices[k2j1][0], vertices[k2j1][1], vertices[k2j1][2])
-// 				f2.Finished(FACE_NORMAL)
-// 				obj.theFaces.AddFace(f2)
-// 			}
-// 		}
-// 	}
-
-// 	// 3. Finalize the object by building its BSP tree.
-// 	obj.Finished()
-// 	return obj
-// }
-
-// NewUVSphere creates a sphere based on latitude/longitude rings (sectors and stacks).
-// This structure allows for a perfectly straight horizontal stripe.
 func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object_3d {
+	obj := NewObject_3d()
+
+	// We loop through stacks (latitude) and sectors (longitude).
+	vertices := make([][3]float64, 0)
+	for i := 0; i <= stacks; i++ {
+		stackAngle := math.Pi/2 - float64(i)*math.Pi/float64(stacks) // phi
+		xy := radius * math.Cos(stackAngle)
+		z := radius * math.Sin(stackAngle)
+
+		for j := 0; j <= sectors; j++ {
+			sectorAngle := float64(j) * 2 * math.Pi / float64(sectors) // theta
+			x := xy * math.Cos(sectorAngle)
+			y := xy * math.Sin(sectorAngle)
+			vertices = append(vertices, [3]float64{x, y, z})
+		}
+	}
+
+	// Determine the start and end stacks for the stripe.
+	// The stripe is centered around the equator (the middle stack).
+	middleStack := stacks / 2
+	stripeStart := middleStack - (stripeStacks / 2)
+	stripeEnd := middleStack + (stripeStacks / 2)
+
+	for i := 0; i < stacks; i++ {
+		// Determine the color for this entire ring of faces.
+		var faceColor color.RGBA
+		if i >= stripeStart && i < stripeEnd {
+			faceColor = stripeClr
+		} else {
+			faceColor = bodyClr
+		}
+
+		k1 := i * (sectors + 1)
+		k2 := k1 + sectors + 1
+
+		for j := 0; j < sectors; j++ {
+			k1j := k1 + j
+			k1j1 := k1j + 1
+			k2j := k2 + j
+			k2j1 := k2j + 1
+
+			// For each quad, we create two triangles.
+			// Special handling for the poles.
+			if i != 0 {
+				// First triangle of the quad
+				f1 := NewFace(nil, faceColor, nil)
+				f1.AddPoint(vertices[k1j][0], vertices[k1j][1], vertices[k1j][2])
+				f1.AddPoint(vertices[k2j][0], vertices[k2j][1], vertices[k2j][2])
+				f1.AddPoint(vertices[k1j1][0], vertices[k1j1][1], vertices[k1j1][2])
+				f1.Finished(FACE_REVERSE)
+				obj.theFaces.AddFace(f1)
+			}
+
+			if i != (stacks - 1) {
+				// Second triangle of the quad
+				f2 := NewFace(nil, faceColor, nil)
+				f2.AddPoint(vertices[k1j1][0], vertices[k1j1][1], vertices[k1j1][2])
+				f2.AddPoint(vertices[k2j][0], vertices[k2j][1], vertices[k2j][2])
+				f2.AddPoint(vertices[k2j1][0], vertices[k2j1][1], vertices[k2j1][2])
+				f2.Finished(FACE_REVERSE)
+				obj.theFaces.AddFace(f2)
+			}
+		}
+	}
+
+	// 3. Finalize the object by building its BSP tree.
+	obj.Finished()
+	return obj
+}
+
+func NewUVSphere2(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object_3d {
 	obj := NewObject_3d()
 
 	vertices := make([][3]float64, 0)
@@ -1442,16 +1417,12 @@ func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.R
 		face.AddPoint(p2[0], p2[1], p2[2])
 		face.AddPoint(p3[0], p3[1], p3[2])
 
-		// === THE FIX IS HERE ===
-		// Instead of relying on automatic normal creation, we calculate the
-		// true geometric normal for the face.
-
-		// 1. Find the center of the triangle face.
+		// Find the center of the triangle face.
 		centerX := (p1[0] + p2[0] + p3[0]) / 3.0
 		centerY := (p1[1] + p2[1] + p3[1]) / 3.0
 		centerZ := (p1[2] + p2[2] + p3[2]) / 3.0
 
-		// 2. The normal is the vector from the sphere's center (0,0,0) to the face's center, normalized.
+		// The normal is the vector from the sphere's center (0,0,0) to the face's center, normalized.
 		normalVec := []float64{centerX, centerY, centerZ, 0.0}
 		length := GetLength(normalVec)
 		if length > 0 {
@@ -1464,7 +1435,7 @@ func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.R
 		normalVec[1] *= -1
 		normalVec[2] *= -1
 
-		// 3. Explicitly set this perfect normal on the face.
+		// Explicitly set this perfect normal on the face.
 		face.SetNormal(normalVec)
 		// We no longer need the FACE_NORMAL/FACE_REVERSE flag.
 		face.Finished(FACE_REVERSE)
