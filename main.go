@@ -190,6 +190,183 @@ func (f *Face) createNormal() {
 	f.normal = nor.Normal[:]
 }
 
+// Quaternion represents a rotation in 3D space.
+type Quaternion struct {
+	W, X, Y, Z float64
+}
+
+// NewQuaternion creates a new quaternion from its raw components.
+func NewQuaternion(w, x, y, z float64) *Quaternion {
+	return &Quaternion{W: w, X: x, Y: y, Z: z}
+}
+
+// NewQuaternionFromAxisAngle creates a quaternion representing a rotation
+// of `angle` radians around the given `axis`. The axis vector must be normalized.
+func NewQuaternionFromAxisAngle(axis [3]float64, angle float64) *Quaternion {
+	halfAngle := angle / 2.0
+	sinHalfAngle := math.Sin(halfAngle)
+	return &Quaternion{
+		W: math.Cos(halfAngle),
+		X: axis[0] * sinHalfAngle,
+		Y: axis[1] * sinHalfAngle,
+		Z: axis[2] * sinHalfAngle,
+	}
+}
+
+// Normalize ensures the quaternion is a unit quaternion, which is necessary
+// for it to represent a pure rotation.
+func (q *Quaternion) Normalize() {
+	length := math.Sqrt(q.W*q.W + q.X*q.X + q.Y*q.Y + q.Z*q.Z)
+	if length == 0 {
+		return
+	}
+	q.W /= length
+	q.X /= length
+	q.Y /= length
+	q.Z /= length
+}
+
+// ToRotationMatrix converts the quaternion into a 4x4 rotation matrix.
+func (q *Quaternion) ToRotationMatrix() *Matrix {
+	q.Normalize() // Ensure the quaternion is a unit quaternion
+
+	xx, yy, zz := q.X*q.X, q.Y*q.Y, q.Z*q.Z
+	xy, xz, yz := q.X*q.Y, q.X*q.Z, q.Y*q.Z
+	wx, wy, wz := q.W*q.X, q.W*q.Y, q.W*q.Z
+
+	m := make([][]float64, 4)
+	for i := range m {
+		m[i] = make([]float64, 4)
+	}
+
+	m[0][0] = 1 - 2*(yy+zz)
+	m[0][1] = 2 * (xy - wz)
+	m[0][2] = 2 * (xz + wy)
+
+	m[1][0] = 2 * (xy + wz)
+	m[1][1] = 1 - 2*(xx+zz)
+	m[1][2] = 2 * (yz - wx)
+
+	m[2][0] = 2 * (xz - wy)
+	m[2][1] = 2 * (yz + wx)
+	m[2][2] = 1 - 2*(xx+yy)
+
+	m[3][3] = 1.0
+
+	return &Matrix{ThisMatrix: m}
+}
+
+// LookAtMatrix generates a Matrix that orients an object at `eye` position
+// to look at a `target` position. The `up` vector defines the upward direction
+// and helps stabilize the rotation.
+func LookAtMatrix(eye, target, up *Vector3d) *Matrix {
+	// 1. Calculate the forward vector (from target to eye) and normalize it.
+	forward := NewVector3d(
+		eye.Normal[0]-target.Normal[0],
+		eye.Normal[1]-target.Normal[1],
+		eye.Normal[2]-target.Normal[2],
+	)
+	forward.Normalize()
+
+	// 2. Calculate the right vector by taking the cross product of the 'up'
+	//    vector and the forward vector, then normalize it.
+	rightNormal := Cross(up.Normal[:], forward.Normal[:])
+	right := NewVector3dFromArray(rightNormal)
+	right.Normalize()
+
+	// 3. Recalculate the true 'up' vector by taking the cross product of the
+	//    forward and right vectors. This ensures all three axes are orthogonal.
+	newUpNormal := Cross(forward.Normal[:], right.Normal[:])
+	newUp := NewVector3dFromArray(newUpNormal)
+	// No need to normalize newUp as forward and right are already unit vectors.
+
+	// 4. Construct the rotation matrix from the calculated vectors.
+	m := IdentMatrix()
+	m.ThisMatrix[0][0] = right.Normal[0]
+	m.ThisMatrix[0][1] = right.Normal[1]
+	m.ThisMatrix[0][2] = right.Normal[2]
+
+	m.ThisMatrix[1][0] = newUp.Normal[0]
+	m.ThisMatrix[1][1] = newUp.Normal[1]
+	m.ThisMatrix[1][2] = newUp.Normal[2]
+
+	m.ThisMatrix[2][0] = forward.Normal[0]
+	m.ThisMatrix[2][1] = forward.Normal[1]
+	m.ThisMatrix[2][2] = forward.Normal[2]
+
+	// 5. Convert the rotation matrix to a quaternion.
+	return m
+}
+
+// MatrixToQuaternion converts a 3x3 or 4x4 rotation matrix into a quaternion.
+func MatrixToQuaternion(m *Matrix) *Quaternion {
+	q := &Quaternion{}
+	trace := m.ThisMatrix[0][0] + m.ThisMatrix[1][1] + m.ThisMatrix[2][2]
+
+	if trace > 0 {
+		s := 0.5 / math.Sqrt(trace+1.0)
+		q.W = 0.25 / s
+		q.X = (m.ThisMatrix[2][1] - m.ThisMatrix[1][2]) * s
+		q.Y = (m.ThisMatrix[0][2] - m.ThisMatrix[2][0]) * s
+		q.Z = (m.ThisMatrix[1][0] - m.ThisMatrix[0][1]) * s
+	} else {
+		if m.ThisMatrix[0][0] > m.ThisMatrix[1][1] && m.ThisMatrix[0][0] > m.ThisMatrix[2][2] {
+			s := 2.0 * math.Sqrt(1.0+m.ThisMatrix[0][0]-m.ThisMatrix[1][1]-m.ThisMatrix[2][2])
+			q.W = (m.ThisMatrix[2][1] - m.ThisMatrix[1][2]) / s
+			q.X = 0.25 * s
+			q.Y = (m.ThisMatrix[0][1] + m.ThisMatrix[1][0]) / s
+			q.Z = (m.ThisMatrix[0][2] + m.ThisMatrix[2][0]) / s
+		} else if m.ThisMatrix[1][1] > m.ThisMatrix[2][2] {
+			s := 2.0 * math.Sqrt(1.0+m.ThisMatrix[1][1]-m.ThisMatrix[0][0]-m.ThisMatrix[2][2])
+			q.W = (m.ThisMatrix[0][2] - m.ThisMatrix[2][0]) / s
+			q.X = (m.ThisMatrix[0][1] + m.ThisMatrix[1][0]) / s
+			q.Y = 0.25 * s
+			q.Z = (m.ThisMatrix[1][2] + m.ThisMatrix[2][1]) / s
+		} else {
+			s := 2.0 * math.Sqrt(1.0+m.ThisMatrix[2][2]-m.ThisMatrix[0][0]-m.ThisMatrix[1][1])
+			q.W = (m.ThisMatrix[1][0] - m.ThisMatrix[0][1]) / s
+			q.X = (m.ThisMatrix[0][2] + m.ThisMatrix[2][0]) / s
+			q.Y = (m.ThisMatrix[1][2] + m.ThisMatrix[2][1]) / s
+			q.Z = 0.25 * s
+		}
+	}
+	return q
+}
+
+// Cross calculates the cross product of two 3-element vectors.
+func Cross(a, b []float64) []float64 {
+	return []float64{
+		a[1]*b[2] - a[2]*b[1],
+		a[2]*b[0] - a[0]*b[2],
+		a[0]*b[1] - a[1]*b[0],
+		0, // W component is 0 for vectors
+	}
+}
+
+// NewCameraWithQuaternion creates a camera at a specific position with an
+// orientation defined by a quaternion.
+func NewCameraWithQuaternion(pos *Point3d, orientation *Quaternion) *Camera {
+	// The camera's view matrix is the inverse of its transformation matrix.
+	// For a rotation, the inverse is the conjugate of the quaternion, which
+	// for a unit quaternion is (-x, -y, -z, w).
+	invOrientation := &Quaternion{
+		W: orientation.W,
+		X: -orientation.X,
+		Y: -orientation.Y,
+		Z: -orientation.Z,
+	}
+
+	// The final view matrix is a rotation followed by a translation.
+	rotMatrix := invOrientation.ToRotationMatrix()
+	transMatrix := TransMatrix(-pos.GetX(), -pos.GetY(), -pos.GetZ())
+	viewMatrix := rotMatrix.MultiplyBy(transMatrix)
+
+	return &Camera{
+		camMatrixRev:   viewMatrix,
+		cameraPosition: pos,
+	}
+}
+
 type Matrix struct {
 	ThisMatrix [][]float64
 }
@@ -884,13 +1061,13 @@ func clamp(value, min, max int) int {
 	return value
 }
 
-func (o *Object_3d) PaintSolid(screen *ebiten.Image, x, y int, lightingChange bool) {
+func (o *Object3d) PaintSolid(screen *ebiten.Image, x, y int, lightingChange bool) {
 	if o.root != nil {
 		o.root.PaintWithColor(screen, x, y, o.transFaceMesh.Points, o.transNormalMesh.Points, lightingChange)
 	}
 }
 
-type Object_3d struct {
+type Object3d struct {
 	faceMesh        *FaceMesh
 	normalMesh      *NormalMesh
 	transFaceMesh   *FaceMesh
@@ -900,8 +1077,8 @@ type Object_3d struct {
 	rotMatrix       *Matrix
 }
 
-func NewObject_3d() *Object_3d {
-	return &Object_3d{
+func NewObject_3d() *Object3d {
+	return &Object3d{
 		transFaceMesh:   NewFaceMesh(),
 		transNormalMesh: NewNormalMesh(),
 		theFaces:        NewFaceStore(),
@@ -909,8 +1086,8 @@ func NewObject_3d() *Object_3d {
 	}
 }
 
-func (o *Object_3d) Clone() *Object_3d {
-	clone := &Object_3d{
+func (o *Object3d) Clone() *Object3d {
+	clone := &Object3d{
 		// shared
 		faceMesh:   o.faceMesh,
 		normalMesh: o.normalMesh,
@@ -925,7 +1102,7 @@ func (o *Object_3d) Clone() *Object_3d {
 	return clone
 }
 
-func (o *Object_3d) Finished() {
+func (o *Object3d) Finished() {
 	log.Println("Creating BSP Tree...")
 	if o.theFaces.FaceCount() > 0 {
 		o.root = o.createBspTree(o.theFaces, o.transFaceMesh, o.transNormalMesh)
@@ -939,11 +1116,11 @@ func (o *Object_3d) Finished() {
 	log.Printf("Normals: %d", len(o.normalMesh.Points.ThisMatrix))
 }
 
-func (o *Object_3d) ApplyMatrixBatch(m *Matrix) {
+func (o *Object3d) ApplyMatrixBatch(m *Matrix) {
 	o.rotMatrix = m.MultiplyBy(o.rotMatrix)
 }
 
-func (o *Object_3d) ApplyMatrixTemp(aMatrix *Matrix) {
+func (o *Object3d) ApplyMatrixTemp(aMatrix *Matrix) {
 	rotMatrixTemp := aMatrix.MultiplyBy(o.rotMatrix)
 
 	// Use the new, correct method to transform the normals (rotation only).
@@ -961,7 +1138,7 @@ func (o *Object_3d) ApplyMatrixTemp(aMatrix *Matrix) {
 	rotMatrixTemp.TransformObj(o.faceMesh.Points, o.transFaceMesh.Points)
 }
 
-func (o *Object_3d) createBspTree(faces *FaceStore, newFaces *FaceMesh, newNormMesh *NormalMesh) *BspNode {
+func (o *Object3d) createBspTree(faces *FaceStore, newFaces *FaceMesh, newNormMesh *NormalMesh) *BspNode {
 	if faces.FaceCount() == 0 {
 		return nil
 	}
@@ -1017,7 +1194,7 @@ func (o *Object_3d) createBspTree(faces *FaceStore, newFaces *FaceMesh, newNormM
 	return parent
 }
 
-func (o *Object_3d) choosePlane(fs *FaceStore) *Face {
+func (o *Object3d) choosePlane(fs *FaceStore) *Face {
 	leastFace, leastFaceTotal := 0, fs.FaceCount()
 
 	for chosen := 0; chosen < fs.FaceCount(); chosen++ {
@@ -1043,7 +1220,7 @@ func (o *Object_3d) choosePlane(fs *FaceStore) *Face {
 	return fs.RemoveFaceAt(leastFace)
 }
 
-func NewCube() *Object_3d {
+func NewCube() *Object3d {
 	obj := NewObject_3d()
 	s := 40.0 // size
 
@@ -1098,7 +1275,7 @@ func NewCube() *Object_3d {
 
 // NewRectangle creates a new Object_3d in the shape of a cuboid (a 3D rectangle).
 // It's centered at the origin and has the specified dimensions and color.
-func NewRectangle(width, height, length float64, clr color.RGBA) *Object_3d {
+func NewRectangle(width, height, length float64, clr color.RGBA) *Object3d {
 	// create a new, empty object to populate.
 	obj := NewObject_3d()
 
@@ -1158,7 +1335,7 @@ func NewRectangle(width, height, length float64, clr color.RGBA) *Object_3d {
 //
 //	of 2 will split a face into a 2x2 grid of quads (8 triangles). A value of 1
 //	will result in one quad per face (2 triangles).
-func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdivisions int) *Object_3d {
+func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdivisions int) *Object3d {
 	obj := NewObject_3d()
 	w2, h2, l2 := width/2.0, height/2.0, length/2.0
 
@@ -1245,7 +1422,7 @@ func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdi
 // NewSphere creates a new Object_3d in the shape of an icosphere.
 // An icosphere is a sphere made of a mesh of triangles, which is more
 // uniform than a traditional UV sphere.
-func NewSphere(radius float64, subdivisions int, clr color.RGBA) *Object_3d {
+func NewSphere(radius float64, subdivisions int, clr color.RGBA) *Object3d {
 	obj := NewObject_3d()
 
 	// Define the 12 vertices of an Icosahedron.
@@ -1389,7 +1566,7 @@ func NewCameraLookAt(x, y, z, lookX, lookY, lookZ float64) *Camera {
 }
 
 type World_3d struct {
-	objects               []*Object_3d
+	objects               []*Object3d
 	objXpos               []float64
 	objYpos               []float64
 	objZpos               []float64
@@ -1398,7 +1575,7 @@ type World_3d struct {
 	camYpos               []float64
 	camZpos               []float64
 	currentCamera         int
-	objectToDrawFirst     []*Object_3d
+	objectToDrawFirst     []*Object3d
 	objectToDrawFirstXpos []float64
 	objectToDrawFirstYpos []float64
 	objectToDrawFirstZpos []float64
@@ -1410,7 +1587,7 @@ func NewWorld_3d() *World_3d {
 	}
 }
 
-func (w *World_3d) AddObject(obj *Object_3d, x, y, z float64) {
+func (w *World_3d) AddObject(obj *Object3d, x, y, z float64) {
 	w.objects = append(w.objects, obj)
 	w.objXpos = append(w.objXpos, x)
 	w.objYpos = append(w.objYpos, y)
@@ -1418,7 +1595,7 @@ func (w *World_3d) AddObject(obj *Object_3d, x, y, z float64) {
 }
 
 // AddObjectDrawFirst
-func (w *World_3d) AddObjectDrawFirst(obj *Object_3d, x, y, z float64) {
+func (w *World_3d) AddObjectDrawFirst(obj *Object3d, x, y, z float64) {
 	w.objectToDrawFirst = append(w.objectToDrawFirst, obj)
 	w.objectToDrawFirstXpos = append(w.objectToDrawFirstXpos, x)
 	w.objectToDrawFirstYpos = append(w.objectToDrawFirstYpos, y)
@@ -1483,7 +1660,7 @@ func init() {
 type Game struct {
 	world        *World_3d
 	i, p         float64
-	cube         *Object_3d
+	cube         *Object3d
 	lastX, lastY int
 	dragged      bool
 }
@@ -1529,7 +1706,7 @@ func NewGame() *Game {
 
 // NewUVSphere creates a sphere based on latitude/longitude rings (sectors and stacks).
 // This structure allows for a perfectly straight horizontal stripe.
-func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object_3d {
+func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object3d {
 	obj := NewObject_3d()
 
 	// We loop through stacks (latitude) and sectors (longitude).
@@ -1600,7 +1777,7 @@ func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.R
 	return obj
 }
 
-func NewUVSphere2(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object_3d {
+func NewUVSphere2(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object3d {
 	obj := NewObject_3d()
 
 	vertices := make([][3]float64, 0)
@@ -1867,7 +2044,7 @@ func fillConvexPolygon(screen *ebiten.Image, xp, yp []float32, clr color.RGBA) {
 	screen.DrawTriangles(vertices, indices, whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image), op)
 }
 
-func LoadObjectFromDXFFile(fileName string, reverse int) (*Object_3d, error) {
+func LoadObjectFromDXFFile(fileName string, reverse int) (*Object3d, error) {
 	file, err := os.Open(fileName)
 	if err != nil {
 		return nil, fmt.Errorf("could not open DXF file %s: %w", fileName, err)
@@ -1885,7 +2062,7 @@ func LoadObjectFromDXFFile(fileName string, reverse int) (*Object_3d, error) {
 // NewObjectFromDXF creates a new Object_3d by reading a simplified DXF file from
 // the given reader. It returns a fully constructed object with its BSP tree
 // already built, or an error if the file cannot be parsed.
-func NewObjectFromDXF(reader io.Reader, reverse int) (*Object_3d, error) {
+func NewObjectFromDXF(reader io.Reader, reverse int) (*Object3d, error) {
 	// 1. Create a new, empty object to populate.
 	obj := NewObject_3d()
 
