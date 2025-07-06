@@ -16,7 +16,6 @@ import (
 
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 const (
@@ -1436,6 +1435,57 @@ func NewCamera(xp, yp, zp, xa, ya, za float64) *Camera {
 	return c
 }
 
+func NewCameraLookAt(camPos Vector3, lookAt Vector3, up Vector3) *Camera {
+	lookAtMat := mgl64.LookAt(
+		camPos.GetX(), camPos.GetY(), camPos.GetZ(),
+		lookAt.GetX(), lookAt.GetY(), lookAt.GetZ(),
+		0, 1, 0,
+	)
+
+	sMat := ToGoSieMatrix(lookAtMat)
+
+	c := &Camera{
+		camMatrixRev:   sMat,
+		cameraPosition: NewPoint3d(camPos.GetX(), camPos.GetY(), camPos.GetZ()),
+		cameraAngle:    NewVector3(0, 0, 0), //TODO: remove
+	}
+
+	return c
+}
+
+func (c *Camera) LookAt(lookAt Vector3, up Vector3) {
+	// lookAtMat := mgl64.LookAt(
+
+	// 	lookAt.GetX(),
+	// 	lookAt.GetY(),
+	// 	lookAt.GetZ(),
+	// 	c.cameraPosition.GetX(),
+	// 	c.cameraPosition.GetY(),
+	// 	c.cameraPosition.GetZ(),
+	// 	0,
+	// 	1,
+	// 	0,
+	// )
+
+	// // Create a quaternion for the up vector to ensure the camera's up direction is respected.
+	upVec := mgl64.Vec3{up.GetX(), up.GetY(), up.GetZ()}
+	lookAtQuat := mgl64.QuatLookAtV(
+
+		mgl64.Vec3{lookAt.GetX(), lookAt.GetY(), lookAt.GetZ()},
+		mgl64.Vec3{c.cameraPosition.GetX(), c.cameraPosition.GetY(), c.cameraPosition.GetZ()},
+
+		upVec,
+	)
+
+	// lookAtQuat = lookAtQuat.Inverse()
+	lookAtMat := lookAtQuat.Mat4()
+	// // lookAtMat.Inv()
+	// // lookAtMat = lookAtMat.Inv()
+
+	sMat := ToGoSieMatrix(lookAtMat)
+	c.camMatrixRev = sMat
+}
+
 func (c *Camera) GetPosition() *Point3d {
 	if c.cameraPosition == nil {
 		return NewPoint3d(0, 0, 0)
@@ -1445,6 +1495,27 @@ func (c *Camera) GetPosition() *Point3d {
 
 func (c *Camera) SetCameraPosition(x, y, z float64) {
 	c.cameraPosition = NewPoint3d(x, y, z)
+}
+
+func (c *Camera) AddXPosition(x float64) {
+	if c.cameraPosition == nil {
+		c.cameraPosition = NewPoint3d(0, 0, 0)
+	}
+	c.cameraPosition.Points[0] += x
+}
+
+func (c *Camera) AddYPosition(y float64) {
+	if c.cameraPosition == nil {
+		c.cameraPosition = NewPoint3d(0, 0, 0)
+	}
+	c.cameraPosition.Points[1] += y
+}
+
+func (c *Camera) AddZPosition(z float64) {
+	if c.cameraPosition == nil {
+		c.cameraPosition = NewPoint3d(0, 0, 0)
+	}
+	c.cameraPosition.Points[2] += z
 }
 
 func (c *Camera) GetMatrix() *Matrix {
@@ -1541,9 +1612,10 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 	})
 
 	// Draw objects that should be drawn first
-	for i, obj := range w.objectToDrawFirst {
-		m := TransMatrix(w.objectToDrawFirstXpos[i]-camX, w.objectToDrawFirstYpos[i]-camY, w.objectToDrawFirstZpos[i]-camZ)
-		obj.ApplyMatrixTemp(cam.camMatrixRev.MultiplyBy(m))
+	for _, obj := range w.objectToDrawFirst {
+		// m := TransMatrix(w.objectToDrawFirstXpos[i]-camX, w.objectToDrawFirstYpos[i]-camY, w.objectToDrawFirstZpos[i]-camZ)
+		// obj.ApplyMatrixTemp(cam.camMatrixRev.MultiplyBy(m))
+		obj.ApplyMatrixTemp(cam.camMatrixRev)
 		obj.PaintSolid(screen, xsize/2, ysize/2, true)
 	}
 
@@ -1770,132 +1842,132 @@ func NewUVSphere2(radius float64, sectors, stacks int, bodyClr, stripeClr color.
 	return obj
 }
 
-func (g *Game) Update() error {
-	moveSpeed := 15.0
+// func (g *Game) Update() error {
+// 	moveSpeed := 15.0
 
-	// Automatic object rotation
-	g.i += 0.02
-	g.p += 0.05
-	for index, obj := range g.world.objects {
-		s := NewForwardMatrix(math.Sin(g.i+float64(index))/8/5, math.Cos(g.p)/8/5, math.Cos(g.i+1.14)/8/5)
-		obj.ApplyMatrixBatch(s)
-	}
+// 	// Automatic object rotation
+// 	g.i += 0.02
+// 	g.p += 0.05
+// 	for index, obj := range g.world.objects {
+// 		s := NewForwardMatrix(math.Sin(g.i+float64(index))/8/5, math.Cos(g.p)/8/5, math.Cos(g.i+1.14)/8/5)
+// 		obj.ApplyMatrixBatch(s)
+// 	}
 
-	// Get the current camera
-	cam := g.world.cameras[g.world.currentCamera]
-	if cam != nil {
-		// The camera's view matrix (`CamMatrixRev`) is the inverse of its world
-		// transformation matrix. For a pure rotation matrix, the inverse is the
-		// transpose. Therefore, the columns of the view matrix represent the
-		// camera's axes (right, up, forward) in world space.
+// 	// Get the current camera
+// 	cam := g.world.cameras[g.world.currentCamera]
+// 	if cam != nil {
+// 		// The camera's view matrix (`CamMatrixRev`) is the inverse of its world
+// 		// transformation matrix. For a pure rotation matrix, the inverse is the
+// 		// transpose. Therefore, the columns of the view matrix represent the
+// 		// camera's axes (right, up, forward) in world space.
 
-		// // Right vector is the first column of the view matrix.
-		// rightVecX := cam.camMatrixRev.ThisMatrix[0][0]
-		// rightVecY := cam.camMatrixRev.ThisMatrix[1][0]
-		// rightVecZ := cam.camMatrixRev.ThisMatrix[2][0]
+// 		// // Right vector is the first column of the view matrix.
+// 		// rightVecX := cam.camMatrixRev.ThisMatrix[0][0]
+// 		// rightVecY := cam.camMatrixRev.ThisMatrix[1][0]
+// 		// rightVecZ := cam.camMatrixRev.ThisMatrix[2][0]
 
-		// // Forward vector is the third column of the view matrix.
-		// // Note: In a right-handed coordinate system, the camera looks down its
-		// // negative Z-axis, but the "forward" direction for movement is typically
-		// // along the positive Z-axis of the camera's coordinate space.
-		// forwardVecX := cam.camMatrixRev.ThisMatrix[0][2]
-		// forwardVecY := cam.camMatrixRev.ThisMatrix[1][2]
-		// forwardVecZ := cam.camMatrixRev.ThisMatrix[2][2]
+// 		// // Forward vector is the third column of the view matrix.
+// 		// // Note: In a right-handed coordinate system, the camera looks down its
+// 		// // negative Z-axis, but the "forward" direction for movement is typically
+// 		// // along the positive Z-axis of the camera's coordinate space.
+// 		// forwardVecX := cam.camMatrixRev.ThisMatrix[0][2]
+// 		// forwardVecY := cam.camMatrixRev.ThisMatrix[1][2]
+// 		// forwardVecZ := cam.camMatrixRev.ThisMatrix[2][2]
 
-		// // Handle keyboard input for movement
-		// if ebiten.IsKeyPressed(ebiten.KeyW) { // Move forward
-		// 	g.world.camXpos[g.world.currentCamera] += forwardVecX * moveSpeed
-		// 	g.world.camYpos[g.world.currentCamera] += forwardVecY * moveSpeed
-		// 	g.world.camZpos[g.world.currentCamera] += forwardVecZ * moveSpeed
-		// }
-		// if ebiten.IsKeyPressed(ebiten.KeyS) { // Move backward
-		// 	g.world.camXpos[g.world.currentCamera] -= forwardVecX * moveSpeed
-		// 	g.world.camYpos[g.world.currentCamera] -= forwardVecY * moveSpeed
-		// 	g.world.camZpos[g.world.currentCamera] -= forwardVecZ * moveSpeed
-		// }
-		// if ebiten.IsKeyPressed(ebiten.KeyA) { // Strafe left
-		// 	g.world.camXpos[g.world.currentCamera] -= rightVecX * moveSpeed
-		// 	g.world.camYpos[g.world.currentCamera] -= rightVecY * moveSpeed
-		// 	g.world.camZpos[g.world.currentCamera] -= rightVecZ * moveSpeed
-		// }
-		// if ebiten.IsKeyPressed(ebiten.KeyD) { // Strafe right
-		// 	g.world.camXpos[g.world.currentCamera] += rightVecX * moveSpeed
-		// 	g.world.camYpos[g.world.currentCamera] += rightVecY * moveSpeed
-		// 	g.world.camZpos[g.world.currentCamera] += rightVecZ * moveSpeed
-		// }
+// 		// // Handle keyboard input for movement
+// 		// if ebiten.IsKeyPressed(ebiten.KeyW) { // Move forward
+// 		// 	g.world.camXpos[g.world.currentCamera] += forwardVecX * moveSpeed
+// 		// 	g.world.camYpos[g.world.currentCamera] += forwardVecY * moveSpeed
+// 		// 	g.world.camZpos[g.world.currentCamera] += forwardVecZ * moveSpeed
+// 		// }
+// 		// if ebiten.IsKeyPressed(ebiten.KeyS) { // Move backward
+// 		// 	g.world.camXpos[g.world.currentCamera] -= forwardVecX * moveSpeed
+// 		// 	g.world.camYpos[g.world.currentCamera] -= forwardVecY * moveSpeed
+// 		// 	g.world.camZpos[g.world.currentCamera] -= forwardVecZ * moveSpeed
+// 		// }
+// 		// if ebiten.IsKeyPressed(ebiten.KeyA) { // Strafe left
+// 		// 	g.world.camXpos[g.world.currentCamera] -= rightVecX * moveSpeed
+// 		// 	g.world.camYpos[g.world.currentCamera] -= rightVecY * moveSpeed
+// 		// 	g.world.camZpos[g.world.currentCamera] -= rightVecZ * moveSpeed
+// 		// }
+// 		// if ebiten.IsKeyPressed(ebiten.KeyD) { // Strafe right
+// 		// 	g.world.camXpos[g.world.currentCamera] += rightVecX * moveSpeed
+// 		// 	g.world.camYpos[g.world.currentCamera] += rightVecY * moveSpeed
+// 		// 	g.world.camZpos[g.world.currentCamera] += rightVecZ * moveSpeed
+// 		// }
 
-		// The camera's view matrix
-		viewMatrix := cam.GetMatrix().ThisMatrix
+// 		// The camera's view matrix
+// 		viewMatrix := cam.GetMatrix().ThisMatrix
 
-		// Right vector is the FIRST ROW of the matrix
-		rightVecX := viewMatrix[0][0]
-		rightVecY := viewMatrix[0][1]
-		rightVecZ := viewMatrix[0][2]
+// 		// Right vector is the FIRST ROW of the matrix
+// 		rightVecX := viewMatrix[0][0]
+// 		rightVecY := viewMatrix[0][1]
+// 		rightVecZ := viewMatrix[0][2]
 
-		// Forward vector is the THIRD ROW of the matrix
-		// (In a right-handed view matrix, the Z-axis row points away from what you're looking at)
-		forwardVecX := viewMatrix[2][0]
-		forwardVecY := viewMatrix[2][1]
-		forwardVecZ := viewMatrix[2][2]
+// 		// Forward vector is the THIRD ROW of the matrix
+// 		// (In a right-handed view matrix, the Z-axis row points away from what you're looking at)
+// 		forwardVecX := viewMatrix[2][0]
+// 		forwardVecY := viewMatrix[2][1]
+// 		forwardVecZ := viewMatrix[2][2]
 
-		// Handle keyboard input for movement
-		if ebiten.IsKeyPressed(ebiten.KeyW) { // Move forward
-			// Pressing W should move you IN THE OPPOSITE direction of the forward vector
-			cam.SetCameraPosition(
-				cam.GetPosition().GetX()-forwardVecX*moveSpeed,
-				cam.GetPosition().GetY()-forwardVecY*moveSpeed,
-				cam.GetPosition().GetZ()-forwardVecZ*moveSpeed,
-			)
-		}
-		if ebiten.IsKeyPressed(ebiten.KeyS) { // Move backward
-			cam.SetCameraPosition(
-				cam.GetPosition().GetX()+forwardVecX*moveSpeed,
-				cam.GetPosition().GetY()+forwardVecY*moveSpeed,
-				cam.GetPosition().GetZ()+forwardVecZ*moveSpeed,
-			)
-		}
-		if ebiten.IsKeyPressed(ebiten.KeyA) { // Strafe left
-			cam.SetCameraPosition(
-				cam.GetPosition().GetX()-rightVecX*moveSpeed,
-				cam.GetPosition().GetY()-rightVecY*moveSpeed,
-				cam.GetPosition().GetZ()-rightVecZ*moveSpeed,
-			)
-		}
-		if ebiten.IsKeyPressed(ebiten.KeyD) { // Strafe right
-			cam.SetCameraPosition(
-				cam.GetPosition().GetX()+rightVecX*moveSpeed,
-				cam.GetPosition().GetY()+rightVecY*moveSpeed,
-				cam.GetPosition().GetZ()+rightVecZ*moveSpeed,
-			)
-		}
-	}
-	// --- END of new code for camera movement ---
+// 		// Handle keyboard input for movement
+// 		if ebiten.IsKeyPressed(ebiten.KeyW) { // Move forward
+// 			// Pressing W should move you IN THE OPPOSITE direction of the forward vector
+// 			cam.SetCameraPosition(
+// 				cam.GetPosition().GetX()-forwardVecX*moveSpeed,
+// 				cam.GetPosition().GetY()-forwardVecY*moveSpeed,
+// 				cam.GetPosition().GetZ()-forwardVecZ*moveSpeed,
+// 			)
+// 		}
+// 		if ebiten.IsKeyPressed(ebiten.KeyS) { // Move backward
+// 			cam.SetCameraPosition(
+// 				cam.GetPosition().GetX()+forwardVecX*moveSpeed,
+// 				cam.GetPosition().GetY()+forwardVecY*moveSpeed,
+// 				cam.GetPosition().GetZ()+forwardVecZ*moveSpeed,
+// 			)
+// 		}
+// 		if ebiten.IsKeyPressed(ebiten.KeyA) { // Strafe left
+// 			cam.SetCameraPosition(
+// 				cam.GetPosition().GetX()-rightVecX*moveSpeed,
+// 				cam.GetPosition().GetY()-rightVecY*moveSpeed,
+// 				cam.GetPosition().GetZ()-rightVecZ*moveSpeed,
+// 			)
+// 		}
+// 		if ebiten.IsKeyPressed(ebiten.KeyD) { // Strafe right
+// 			cam.SetCameraPosition(
+// 				cam.GetPosition().GetX()+rightVecX*moveSpeed,
+// 				cam.GetPosition().GetY()+rightVecY*moveSpeed,
+// 				cam.GetPosition().GetZ()+rightVecZ*moveSpeed,
+// 			)
+// 		}
+// 	}
+// 	// --- END of new code for camera movement ---
 
-	// Mouse look controls (existing code)
-	x, y := ebiten.CursorPosition()
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		if !g.dragged {
-			g.dragged = true
-			g.lastX, g.lastY = x, y
-		}
-	}
-	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
-		g.dragged = false
-	}
-	if g.dragged {
-		newX := float64(g.lastX - x)
-		newX = -newX / 100.0
-		newY := float64(g.lastY - y)
-		newY /= 100.0
+// 	// Mouse look controls (existing code)
+// 	x, y := ebiten.CursorPosition()
+// 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+// 		if !g.dragged {
+// 			g.dragged = true
+// 			g.lastX, g.lastY = x, y
+// 		}
+// 	}
+// 	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+// 		g.dragged = false
+// 	}
+// 	if g.dragged {
+// 		newX := float64(g.lastX - x)
+// 		newX = -newX / 100.0
+// 		newY := float64(g.lastY - y)
+// 		newY /= 100.0
 
-		cam := g.world.cameras[g.world.currentCamera]
-		if cam != nil {
-			cam.AddAngle(newY, newX, 0)
-		}
-		g.lastX, g.lastY = x, y
-	}
-	return nil
-}
+// 		cam := g.world.cameras[g.world.currentCamera]
+// 		if cam != nil {
+// 			cam.AddAngle(newY, newX, 0)
+// 		}
+// 		g.lastX, g.lastY = x, y
+// 	}
+// 	return nil
+// }
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
@@ -2058,3 +2130,14 @@ func ToGoSieMatrix(m mgl64.Mat4) *Matrix {
 		},
 	)
 }
+
+// func ToGoReverseSieMatrix(m mgl64.Mat4) *Matrix {
+// 	return NewMatrixFromData(
+// 		[][]float64{
+// 			{m[0], m[1], m[2], m[3]},
+// 			{m[4], m[5], m[6], m[7]},
+// 			{m[8], m[9], m[10], m[11]},
+// 			{m[12], m[13], m[14], m[15]},
+// 		},
+// 	)
+// }
