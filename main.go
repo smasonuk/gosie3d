@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-gl/mathgl/mgl64"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
@@ -23,23 +24,32 @@ const (
 	screenHeight = 480
 )
 
-type Vector3d struct {
+type Vector3 struct {
 	Normal [4]float64
 }
 
-func NewVector3d(x, y, z float64) *Vector3d {
-	return &Vector3d{
+func (v *Vector3) GetX() float64 { return v.Normal[0] }
+func (v *Vector3) GetY() float64 { return v.Normal[1] }
+func (v *Vector3) GetZ() float64 { return v.Normal[2] }
+func (v *Vector3) Add(x, y, z float64) {
+	v.Normal[0] += x
+	v.Normal[1] += y
+	v.Normal[2] += z
+}
+
+func NewVector3(x, y, z float64) *Vector3 {
+	return &Vector3{
 		Normal: [4]float64{x, y, z, 1.0},
 	}
 }
 
-func NewVector3dFromArray(normal []float64) *Vector3d {
-	v := &Vector3d{}
+func NewVector3dFromArray(normal []float64) *Vector3 {
+	v := &Vector3{}
 	copy(v.Normal[:], normal)
 	return v
 }
 
-func (v *Vector3d) Normalize() {
+func (v *Vector3) Normalize() {
 	length := math.Sqrt(math.Abs(v.Normal[0]*v.Normal[0] + v.Normal[1]*v.Normal[1] + v.Normal[2]*v.Normal[2]))
 	if length == 0 {
 		return
@@ -190,147 +200,54 @@ func (f *Face) createNormal() {
 	f.normal = nor.Normal[:]
 }
 
-// Quaternion represents a rotation in 3D space.
-type Quaternion struct {
-	W, X, Y, Z float64
-}
+// LookAtMatrix generates a complete view matrix that orients the world
+// from the perspective of an eye position looking at a target.
+func LookAtMatrix(eye, target, up *Vector3) *Matrix {
+	// --- Calculate Camera's Local Axes (Right-Handed System) ---
 
-// NewQuaternion creates a new quaternion from its raw components.
-func NewQuaternion(w, x, y, z float64) *Quaternion {
-	return &Quaternion{W: w, X: x, Y: y, Z: z}
-}
-
-// NewQuaternionFromAxisAngle creates a quaternion representing a rotation
-// of `angle` radians around the given `axis`. The axis vector must be normalized.
-func NewQuaternionFromAxisAngle(axis [3]float64, angle float64) *Quaternion {
-	halfAngle := angle / 2.0
-	sinHalfAngle := math.Sin(halfAngle)
-	return &Quaternion{
-		W: math.Cos(halfAngle),
-		X: axis[0] * sinHalfAngle,
-		Y: axis[1] * sinHalfAngle,
-		Z: axis[2] * sinHalfAngle,
-	}
-}
-
-// Normalize ensures the quaternion is a unit quaternion, which is necessary
-// for it to represent a pure rotation.
-func (q *Quaternion) Normalize() {
-	length := math.Sqrt(q.W*q.W + q.X*q.X + q.Y*q.Y + q.Z*q.Z)
-	if length == 0 {
-		return
-	}
-	q.W /= length
-	q.X /= length
-	q.Y /= length
-	q.Z /= length
-}
-
-// ToRotationMatrix converts the quaternion into a 4x4 rotation matrix.
-func (q *Quaternion) ToRotationMatrix() *Matrix {
-	q.Normalize() // Ensure the quaternion is a unit quaternion
-
-	xx, yy, zz := q.X*q.X, q.Y*q.Y, q.Z*q.Z
-	xy, xz, yz := q.X*q.Y, q.X*q.Z, q.Y*q.Z
-	wx, wy, wz := q.W*q.X, q.W*q.Y, q.W*q.Z
-
-	m := make([][]float64, 4)
-	for i := range m {
-		m[i] = make([]float64, 4)
-	}
-
-	m[0][0] = 1 - 2*(yy+zz)
-	m[0][1] = 2 * (xy - wz)
-	m[0][2] = 2 * (xz + wy)
-
-	m[1][0] = 2 * (xy + wz)
-	m[1][1] = 1 - 2*(xx+zz)
-	m[1][2] = 2 * (yz - wx)
-
-	m[2][0] = 2 * (xz - wy)
-	m[2][1] = 2 * (yz + wx)
-	m[2][2] = 1 - 2*(xx+yy)
-
-	m[3][3] = 1.0
-
-	return &Matrix{ThisMatrix: m}
-}
-
-// LookAtMatrix generates a Matrix that orients an object at `eye` position
-// to look at a `target` position. The `up` vector defines the upward direction
-// and helps stabilize the rotation.
-func LookAtMatrix(eye, target, up *Vector3d) *Matrix {
-	// 1. Calculate the forward vector (from target to eye) and normalize it.
-	forward := NewVector3d(
-		eye.Normal[0]-target.Normal[0],
-		eye.Normal[1]-target.Normal[1],
-		eye.Normal[2]-target.Normal[2],
+	// 1. zAxis: The "forward" vector of the camera. Points from the target to the eye.
+	zAxisVec := NewVector3(
+		eye.GetX()-target.GetX(),
+		eye.GetY()-target.GetY(),
+		eye.GetZ()-target.GetZ(),
 	)
-	forward.Normalize()
+	zAxisVec.Normalize()
+	zAxis := zAxisVec.Normal
 
-	// 2. Calculate the right vector by taking the cross product of the 'up'
-	//    vector and the forward vector, then normalize it.
-	rightNormal := Cross(up.Normal[:], forward.Normal[:])
-	right := NewVector3dFromArray(rightNormal)
-	right.Normalize()
+	// 2. xAxis: The "right" vector of the camera.
+	xAxisVec := NewVector3dFromArray(Cross(up.Normal[:], zAxis[:]))
+	xAxisVec.Normalize()
+	xAxis := xAxisVec.Normal
 
-	// 3. Recalculate the true 'up' vector by taking the cross product of the
-	//    forward and right vectors. This ensures all three axes are orthogonal.
-	newUpNormal := Cross(forward.Normal[:], right.Normal[:])
-	newUp := NewVector3dFromArray(newUpNormal)
-	// No need to normalize newUp as forward and right are already unit vectors.
+	// 3. yAxis: The "up" vector of the camera.
+	yAxis := Cross(zAxis[:], xAxis[:])
 
-	// 4. Construct the rotation matrix from the calculated vectors.
-	m := IdentMatrix()
-	m.ThisMatrix[0][0] = right.Normal[0]
-	m.ThisMatrix[0][1] = right.Normal[1]
-	m.ThisMatrix[0][2] = right.Normal[2]
+	// --- Construct the Final View Matrix ---
+	// This matrix combines the rotation and translation in the specific
+	// format your engine's TransformObj function requires.
+	viewMatrix := IdentMatrix()
 
-	m.ThisMatrix[1][0] = newUp.Normal[0]
-	m.ThisMatrix[1][1] = newUp.Normal[1]
-	m.ThisMatrix[1][2] = newUp.Normal[2]
+	// The rotation part is built from the basis vectors in columns.
+	// This correctly orients the world to the camera's view.
+	viewMatrix.ThisMatrix[0][0] = xAxis[0]
+	viewMatrix.ThisMatrix[1][0] = xAxis[1]
+	viewMatrix.ThisMatrix[2][0] = xAxis[2]
 
-	m.ThisMatrix[2][0] = forward.Normal[0]
-	m.ThisMatrix[2][1] = forward.Normal[1]
-	m.ThisMatrix[2][2] = forward.Normal[2]
+	viewMatrix.ThisMatrix[0][1] = yAxis[0]
+	viewMatrix.ThisMatrix[1][1] = yAxis[1]
+	viewMatrix.ThisMatrix[2][1] = yAxis[2]
 
-	// 5. Convert the rotation matrix to a quaternion.
-	return m
-}
+	viewMatrix.ThisMatrix[0][2] = zAxis[0]
+	viewMatrix.ThisMatrix[1][2] = zAxis[1]
+	viewMatrix.ThisMatrix[2][2] = zAxis[2]
 
-// MatrixToQuaternion converts a 3x3 or 4x4 rotation matrix into a quaternion.
-func MatrixToQuaternion(m *Matrix) *Quaternion {
-	q := &Quaternion{}
-	trace := m.ThisMatrix[0][0] + m.ThisMatrix[1][1] + m.ThisMatrix[2][2]
+	// The translation part moves the entire world so the camera is at the origin.
+	// It is calculated by taking the dot product of each axis with the eye's position.
+	viewMatrix.ThisMatrix[3][0] = -(xAxis[0]*eye.GetX() + xAxis[1]*eye.GetY() + xAxis[2]*eye.GetZ())
+	viewMatrix.ThisMatrix[3][1] = -(yAxis[0]*eye.GetX() + yAxis[1]*eye.GetY() + yAxis[2]*eye.GetZ())
+	viewMatrix.ThisMatrix[3][2] = -(zAxis[0]*eye.GetX() + zAxis[1]*eye.GetY() + zAxis[2]*eye.GetZ())
 
-	if trace > 0 {
-		s := 0.5 / math.Sqrt(trace+1.0)
-		q.W = 0.25 / s
-		q.X = (m.ThisMatrix[2][1] - m.ThisMatrix[1][2]) * s
-		q.Y = (m.ThisMatrix[0][2] - m.ThisMatrix[2][0]) * s
-		q.Z = (m.ThisMatrix[1][0] - m.ThisMatrix[0][1]) * s
-	} else {
-		if m.ThisMatrix[0][0] > m.ThisMatrix[1][1] && m.ThisMatrix[0][0] > m.ThisMatrix[2][2] {
-			s := 2.0 * math.Sqrt(1.0+m.ThisMatrix[0][0]-m.ThisMatrix[1][1]-m.ThisMatrix[2][2])
-			q.W = (m.ThisMatrix[2][1] - m.ThisMatrix[1][2]) / s
-			q.X = 0.25 * s
-			q.Y = (m.ThisMatrix[0][1] + m.ThisMatrix[1][0]) / s
-			q.Z = (m.ThisMatrix[0][2] + m.ThisMatrix[2][0]) / s
-		} else if m.ThisMatrix[1][1] > m.ThisMatrix[2][2] {
-			s := 2.0 * math.Sqrt(1.0+m.ThisMatrix[1][1]-m.ThisMatrix[0][0]-m.ThisMatrix[2][2])
-			q.W = (m.ThisMatrix[0][2] - m.ThisMatrix[2][0]) / s
-			q.X = (m.ThisMatrix[0][1] + m.ThisMatrix[1][0]) / s
-			q.Y = 0.25 * s
-			q.Z = (m.ThisMatrix[1][2] + m.ThisMatrix[2][1]) / s
-		} else {
-			s := 2.0 * math.Sqrt(1.0+m.ThisMatrix[2][2]-m.ThisMatrix[0][0]-m.ThisMatrix[1][1])
-			q.W = (m.ThisMatrix[1][0] - m.ThisMatrix[0][1]) / s
-			q.X = (m.ThisMatrix[0][2] + m.ThisMatrix[2][0]) / s
-			q.Y = (m.ThisMatrix[1][2] + m.ThisMatrix[2][1]) / s
-			q.Z = 0.25 * s
-		}
-	}
-	return q
+	return viewMatrix
 }
 
 // Cross calculates the cross product of two 3-element vectors.
@@ -340,30 +257,6 @@ func Cross(a, b []float64) []float64 {
 		a[2]*b[0] - a[0]*b[2],
 		a[0]*b[1] - a[1]*b[0],
 		0, // W component is 0 for vectors
-	}
-}
-
-// NewCameraWithQuaternion creates a camera at a specific position with an
-// orientation defined by a quaternion.
-func NewCameraWithQuaternion(pos *Point3d, orientation *Quaternion) *Camera {
-	// The camera's view matrix is the inverse of its transformation matrix.
-	// For a rotation, the inverse is the conjugate of the quaternion, which
-	// for a unit quaternion is (-x, -y, -z, w).
-	invOrientation := &Quaternion{
-		W: orientation.W,
-		X: -orientation.X,
-		Y: -orientation.Y,
-		Z: -orientation.Z,
-	}
-
-	// The final view matrix is a rotation followed by a translation.
-	rotMatrix := invOrientation.ToRotationMatrix()
-	transMatrix := TransMatrix(-pos.GetX(), -pos.GetY(), -pos.GetZ())
-	viewMatrix := rotMatrix.MultiplyBy(transMatrix)
-
-	return &Camera{
-		camMatrixRev:   viewMatrix,
-		cameraPosition: pos,
 	}
 }
 
@@ -520,6 +413,22 @@ func (m *Matrix) FindPoints(x, y, z float64) []float64 {
 
 func (m *Matrix) Copy() *Matrix {
 	return NewMatrixFromData(m.ThisMatrix)
+}
+
+func (m *Matrix) String() string {
+	var sb strings.Builder
+	for i, row := range m.ThisMatrix {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		for j, val := range row {
+			if j > 0 {
+				sb.WriteString(" ")
+			}
+			sb.WriteString(fmt.Sprintf("%f", val))
+		}
+	}
+	return sb.String()
 }
 
 type Mesh struct {
@@ -1503,7 +1412,16 @@ func NewSphere(radius float64, subdivisions int, clr color.RGBA) *Object3d {
 type Camera struct {
 	camMatrixRev   *Matrix
 	cameraPosition *Point3d
+	cameraAngle    *Vector3
 }
+
+// func NewCameraWithMatrix(xp, yp, zp float64, m *Matrix) *Camera {
+// 	c := &Camera{}
+// 	c.camMatrixRev = m
+// 	c.cameraPosition = NewPoint3d(xp, yp, zp)
+
+// 	return c
+// }
 
 func NewCamera(xp, yp, zp, xa, ya, za float64) *Camera {
 	c := &Camera{}
@@ -1513,6 +1431,7 @@ func NewCamera(xp, yp, zp, xa, ya, za float64) *Camera {
 	c.camMatrixRev = z.MultiplyBy(y)
 	c.camMatrixRev = c.camMatrixRev.MultiplyBy(x)
 	c.cameraPosition = NewPoint3d(xp, yp, zp)
+	c.cameraAngle = NewVector3(xa, ya, za)
 
 	return c
 }
@@ -1532,37 +1451,24 @@ func (c *Camera) GetMatrix() *Matrix {
 	return c.camMatrixRev
 }
 
-func (c *Camera) SetMatrix(m *Matrix) {
-	c.camMatrixRev = m
-}
+// func (c *Camera) SetMatrix(m *Matrix) {
+// 	c.camMatrixRev = m
+// }
 
-func (c *Camera) AddAngle(x, y float64) {
-	rotY := NewRotationMatrix(ROTY, -y)
-	rotX := NewRotationMatrix(ROTX, -x)
-	c.camMatrixRev = rotY.MultiplyBy(rotX).MultiplyBy(c.camMatrixRev)
-}
+func (c *Camera) AddAngle(x, y, z float64) {
+	// rotY := NewRotationMatrix(ROTY, -y)
+	// rotX := NewRotationMatrix(ROTX, -x)
+	// c.camMatrixRev = rotY.MultiplyBy(rotX).MultiplyBy(c.camMatrixRev)
 
-// create a camera at position lookin at another point
-func NewCameraLookAt(x, y, z, lookX, lookY, lookZ float64) *Camera {
-	// Calculate the direction vector from the camera to the look-at point
-	dx := (lookX - x)
-	dy := (lookY - y)
-	dz := (lookZ - z)
+	c.cameraAngle.Add(x, y, z)
 
-	// Normalize the direction vector
-	length := math.Sqrt(dx*dx + dy*dy + dz*dz)
-	if length == 0 {
-		return NewCamera(x, y, z, 0, 0, 0)
-	}
-	dx /= length
-	dy /= length
-	dz /= length
+	rotY := mgl64.HomogRotate3DY(-c.cameraAngle.GetY())
+	rotX := mgl64.HomogRotate3DX(-c.cameraAngle.GetX())
+	rotZ := mgl64.HomogRotate3DZ(-c.cameraAngle.GetZ())
+	camRev := rotZ.Mul4(rotY).Mul4(rotX)
 
-	// Calculate angles based on the direction vector
-	xa := math.Atan2(dy, math.Sqrt(dx*dx+dz*dz)) * (180 / math.Pi)
-	ya := math.Atan2(dx, dz) * (180 / math.Pi)
+	c.camMatrixRev = ToGoSieMatrix(camRev)
 
-	return NewCamera(x, y, z, xa, ya, 0)
 }
 
 type World_3d struct {
@@ -1984,7 +1890,7 @@ func (g *Game) Update() error {
 
 		cam := g.world.cameras[g.world.currentCamera]
 		if cam != nil {
-			cam.AddAngle(newY, newX)
+			cam.AddAngle(newY, newX, 0)
 		}
 		g.lastX, g.lastY = x, y
 	}
@@ -2140,4 +2046,15 @@ func NewObjectFromDXF(reader io.Reader, reverse int) (*Object3d, error) {
 
 	// 4. On success, return the fully populated object and a nil error.
 	return obj, nil
+}
+
+func ToGoSieMatrix(m mgl64.Mat4) *Matrix {
+	return NewMatrixFromData(
+		[][]float64{
+			{m[0], m[1], m[2], m[3]},
+			{m[4], m[5], m[6], m[7]},
+			{m[8], m[9], m[10], m[11]},
+			{m[12], m[13], m[14], m[15]},
+		},
+	)
 }
