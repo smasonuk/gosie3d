@@ -29,6 +29,7 @@ type Object3d struct {
 	theFaces        *FaceStore
 	root            *BspNode
 	rotMatrix       *Matrix
+	position        *Point3d
 }
 
 func NewObject_3d() *Object3d {

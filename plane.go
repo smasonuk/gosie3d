@@ -21,58 +21,104 @@ func NewPlane(f *Face, normal []float64) *Plane {
 	return p
 }
 
+// PointOnPlane determines the position of a point (x, y, z) relative to the plane.
+// It substitutes the point's coordinates into the plane's equation.
+// The result indicates:
+// - Positive value: The point is on the "front" side (in the direction of the normal).
+// - Negative value: The point is on the "back" side.
+// - Zero: The point is on the plane (within the defined planeThickness).
 func (p *Plane) PointOnPlane(x, y, z float64) float64 {
+	// Calculate the signed distance from the point to the plane.
 	num := p.A*x + p.B*y + p.C*z + p.D
+
+	// Check if the point is very close to the plane, but not exactly on it.
+	// If it's within the tolerance (planeThickness), we treat it as being on the plane.
 	if math.Abs(num) > 0 && math.Abs(num) < planeThickness {
 		return 0.0
 	}
 	return num
 }
 
-func (p *Plane) LIntersect(p1, p2 *Point3d) bool {
-	a := p.PointOnPlane(p1.GetX(), p1.GetY(), p1.GetZ())
+// lIntersect checks if a line segment defined by two points (p1, p2) intersects the plane.
+// This is a prerequisite for calculating the intersection point.
+func (p *Plane) lIntersect(p1, p2 *Point3d) bool {
+	a := p.PointOnPlane(p1.X, p1.GetY(), p1.GetZ())
 	b := p.PointOnPlane(p2.GetX(), p2.GetY(), p2.GetZ())
+
+	// If either point is on the plane, this method considers it not a "true" intersection
+	// for the purpose of splitting. The calling logic handles this case.
 	if a == 0 || b == 0 {
 		return false
 	}
+
+	// An intersection occurs if and only if the two points are on opposite sides
+	// of the plane (one's signed distance is positive, the other's is negative).
 	return (a > 0 && b < 0) || (a < 0 && b > 0)
 }
 
+// LineIntersect calculates the exact 3D point where a line (defined by p1 and p2)
+// intersects with the plane.
 func (p *Plane) LineIntersect(p1, p2 *Point3d) *Point3d {
+	// Determine which side of the plane each endpoint lies on.
 	x1, y1, z1 := p1.GetX(), p1.GetY(), p1.GetZ()
 	x2, y2, z2 := p2.GetX(), p2.GetY(), p2.GetZ()
 
-	if !p.LIntersect(p1, p2) {
+	if !p.lIntersect(p1, p2) {
 		return nil
 	}
+
+	// Calculate the denominator for the intersection formula. This is the dot product
+	// of the plane's normal and the line's direction vector.
 	denom := (p.A*(x2-x1) + p.B*(y2-y1) + p.C*(z2-z1))
+
+	// If the denominator is zero, the line is parallel to the plane.
+	// Since we already checked that the endpoints are on opposite sides, this
+	// case is mathematically impossible, but it's a good safeguard.
 	if denom == 0 {
 		return nil
 	}
+
+	// Calculate the parameter 't' which represents the position of the intersection
+	// point along the line segment (from p1 to p2).
 	t := -(p.A*x1 + p.B*y1 + p.C*z1 + p.D) / denom
+
+	// Use 't' to find the actual coordinates of the intersection point.
 	x := x1 + (x2-x1)*t
 	y := y1 + (y2-y1)*t
 	z := z1 + (z2-z1)*t
 	return NewPoint3d(x, y, z)
 }
 
+// FaceIntersect checks if a given face (polygon) intersects with the plane.
+// It does this by checking if the face's vertices lie on opposite sides of the plane.
 func (p *Plane) FaceIntersect(f *Face) bool {
 	var d float64
 	initialized := false
 	for a := 0; a < f.Cnum; a++ {
+		// Calculate the signed distance for the current vertex.
 		n := p.PointOnPlane(f.Points[a][0], f.Points[a][1], f.Points[a][2])
+
+		// Initialize 'd' with the signed distance of the first vertex.
 		if !initialized {
 			d = n
 			initialized = true
 			continue
 		}
+
+		// Check if the current vertex 'n' is on a different side of the plane
+		// compared to the first vertex 'd'.
+		// If the signs are different, the face must cross the plane.
 		if !((d >= 0 && n >= 0) || (d <= 0 && n <= 0)) {
 			return true
 		}
 	}
+
+	// If all vertices are on the same side, the face does not intersect the plane.
 	return false
 }
 
+// SplitFace divides a single face into two new faces along the intersection line
+// with the plane.
 func (p *Plane) SplitFace(aFace *Face) []*Face {
 	faces := make([]*Face, 2)
 	faces[0] = NewFace(nil, color.RGBA{}, nil)
@@ -96,7 +142,7 @@ func (p *Plane) SplitFace(aFace *Face) []*Face {
 		p3d2 := pnts.NextPoint()
 		pnts.Back()
 
-		if p.LIntersect(p3d1, p3d2) {
+		if p.lIntersect(p3d1, p3d2) {
 			pointIntersect := p.LineIntersect(p3d1, p3d2)
 			inter = true
 			faces[currentFace].AddPoint(p3d1.GetX(), p3d1.GetY(), p3d1.GetZ())

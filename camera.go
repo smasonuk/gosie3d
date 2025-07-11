@@ -25,6 +25,10 @@ func NewCamera(xp, yp, zp, xa, ya, za float64) *Camera {
 	return c
 }
 
+func (c *Camera) GetCameraMatrix() *Matrix {
+	return c.camMatrixRev
+}
+
 func NewCameraLookAt(camPos Vector3, lookAt Vector3, up Vector3) *Camera {
 	lookAtMat := mgl64.LookAt(
 		lookAt.GetX(), lookAt.GetY(), lookAt.GetZ(),
@@ -44,41 +48,39 @@ func NewCameraLookAt(camPos Vector3, lookAt Vector3, up Vector3) *Camera {
 	return c
 }
 
-func NewCameraLookMatrixAt3(c Point3d, lookAt Vector3, up Vector3) *Matrix {
+func NewCameraLookMatrixAt3(cameraLocation Point3d, lookAt Vector3, up Vector3) *Matrix {
 
 	sTransWorldToCamera := TransMatrix(
-		-c.GetX(),
-		-c.GetY(),
-		-c.GetZ(),
+		-cameraLocation.GetX(),
+		-cameraLocation.GetY(),
+		-cameraLocation.GetZ(),
 	)
 
-	dirY := lookAt.GetZ() - c.GetZ()
-	dirX := lookAt.GetX() - c.GetX()
+	dirY := lookAt.GetZ() - cameraLocation.GetZ()
+	dirX := lookAt.GetX() - cameraLocation.GetX()
 
-	// // find angle around the Y axis
-	angleY := math.Atan2(
-		dirY,
-		dirX)
+	// // find angle around the Y axis, and x
+	angleY := math.Atan2(dirY, dirX)
+	// angleX := math.Atan2(lookAt.GetY()-cameraLocation.GetY(), math.Sqrt(dirX*dirX+dirY*dirY))
 
 	angleDegrees := angleY * (180 / math.Pi)
 	angleDegrees = angleDegrees - 90 // Adjust to match the coordinate system
+	angleRadY := angleDegrees * (math.Pi / 180)
 
-	// // convert to rad
-	angleRad := angleDegrees * (math.Pi / 180)
+	sMatY := NewRotationMatrix(ROTY, angleRadY)
+	// sMatX := NewRotationMatrix(ROTX, -0.2)
 
-	sMatY := NewRotationMatrix(ROTY, angleRad)
-
+	// sMat := sMatX.MultiplyBy(sMatY.MultiplyBy(sTransWorldToCamera))
 	sMat := sMatY.MultiplyBy(sTransWorldToCamera)
 	return sMat
 
 	// lookAtMat := mgl64.LookAt(
-
-	// 	lookAt.GetX(),
-	// 	lookAt.GetY(),
-	// 	lookAt.GetZ(),
 	// 	c.GetX(),
 	// 	c.GetY(),
 	// 	c.GetZ(),
+	// 	lookAt.GetX(),
+	// 	lookAt.GetY(),
+	// 	lookAt.GetZ(),
 
 	// 	up.GetX(),
 	// 	up.GetY(),
@@ -89,9 +91,8 @@ func NewCameraLookMatrixAt3(c Point3d, lookAt Vector3, up Vector3) *Matrix {
 
 	// pVec := mgl64.Vec3{up.GetX(), up.GetY(), up.GetZ()}
 	// lookAtQuat := mgl64.QuatLookAtV(
-	// 	mgl64.Vec3{lookAt.GetX(), lookAt.GetY(), lookAt.GetZ()},
 	// 	mgl64.Vec3{c.GetX(), c.GetY(), c.GetZ()},
-
+	// 	mgl64.Vec3{lookAt.GetX(), lookAt.GetY(), lookAt.GetZ()},
 	// 	mgl64.Vec3{pVec[0], pVec[1], pVec[2]},
 	// )
 	// lookAtMat := lookAtQuat.Mat4()
