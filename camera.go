@@ -1,6 +1,7 @@
 package gosie3d
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/go-gl/mathgl/mgl64"
@@ -31,8 +32,8 @@ func (c *Camera) GetCameraMatrix() *Matrix {
 
 func NewCameraLookAt(camPos Vector3, lookAt Vector3, up Vector3) *Camera {
 	lookAtMat := mgl64.LookAt(
-		lookAt.GetX(), lookAt.GetY(), lookAt.GetZ(),
-		camPos.GetX(), camPos.GetY(), camPos.GetZ(),
+		lookAt.X, lookAt.Y, lookAt.Z,
+		camPos.X, camPos.Y, camPos.Z,
 
 		0, 1, 0,
 	)
@@ -41,7 +42,7 @@ func NewCameraLookAt(camPos Vector3, lookAt Vector3, up Vector3) *Camera {
 
 	c := &Camera{
 		camMatrixRev:   sMat,
-		cameraPosition: NewPoint3d(camPos.GetX(), camPos.GetY(), camPos.GetZ()),
+		cameraPosition: NewPoint3d(camPos.X, camPos.Y, camPos.Z),
 		cameraAngle:    NewVector3(0, 0, 0), //TODO: remove
 	}
 
@@ -49,89 +50,98 @@ func NewCameraLookAt(camPos Vector3, lookAt Vector3, up Vector3) *Camera {
 }
 
 func NewCameraLookMatrixAt3(cameraLocation Point3d, lookAt Vector3, up Vector3) *Matrix {
-
 	sTransWorldToCamera := TransMatrix(
-		-cameraLocation.GetX(),
-		-cameraLocation.GetY(),
-		-cameraLocation.GetZ(),
+		-cameraLocation.X,
+		-cameraLocation.Y,
+		-cameraLocation.Z,
 	)
 
-	dirY := lookAt.GetZ() - cameraLocation.GetZ()
-	dirX := lookAt.GetX() - cameraLocation.GetX()
+	dirY := lookAt.Y - cameraLocation.Y
+	dirX := lookAt.X - cameraLocation.X
+	dirZ := lookAt.Z - cameraLocation.Z
+	lookADirVec := NewVector3(dirX, dirY, dirZ)
+	// angleY := math.Atan2(dirY, dirX)
 
-	// // find angle around the Y axis, and x
-	angleY := math.Atan2(dirY, dirX)
-	// angleX := math.Atan2(lookAt.GetY()-cameraLocation.GetY(), math.Sqrt(dirX*dirX+dirY*dirY))
-
-	angleDegrees := angleY * (180 / math.Pi)
-	angleDegrees = angleDegrees - 90 // Adjust to match the coordinate system
-	angleRadY := angleDegrees * (math.Pi / 180)
+	angleRadY := angleY(lookAt, cameraLocation)
+	// angleDegreesY := angleRadY * (180 / math.Pi)
 
 	sMatY := NewRotationMatrix(ROTY, angleRadY)
-	// sMatX := NewRotationMatrix(ROTX, -0.2)
+	// sMatX = NewRotationMatrix(ROTX, angleRadX)
+	// sMatX := NewRotationMatrix(ROTX, degreesToRadians(40))
 
-	// sMat := sMatX.MultiplyBy(sMatY.MultiplyBy(sTransWorldToCamera))
-	sMat := sMatY.MultiplyBy(sTransWorldToCamera)
+	newLookAtDirVec := sMatY.RotateVector3(lookADirVec)
+	// fmt.Printf("angleDegreesY: %v\n", angleDegreesY)
+	// fmt.Printf("lookAt: %v\n", lookADirVec)
+	// fmt.Printf("newLookAtDirVec: %v\n", newLookAtDirVec)
+
+	angleDown := angleDown(newLookAtDirVec)
+	angleDownDeg := angleDown * (180 / math.Pi)
+	fmt.Printf("angle down: %f degrees\n", angleDownDeg)
+	sMatX := NewRotationMatrix(ROTX, angleDown)
+
+	sMat := sMatX.MultiplyBy(sMatY.MultiplyBy(sTransWorldToCamera))
+
+	// sMat = sMat.MultiplyBy(looatAtPointsMatrix)
+
+	// sMat := sMatY.MultiplyBy(sTransWorldToCamera)
 	return sMat
+}
 
-	// lookAtMat := mgl64.LookAt(
-	// 	c.GetX(),
-	// 	c.GetY(),
-	// 	c.GetZ(),
-	// 	lookAt.GetX(),
-	// 	lookAt.GetY(),
-	// 	lookAt.GetZ(),
+func angleDown(lookADirVec *Vector3) float64 {
+	hypot := math.Sqrt(lookADirVec.X*lookADirVec.X + lookADirVec.Y*lookADirVec.Y + lookADirVec.Z*lookADirVec.Z)
+	adjacent := lookADirVec.Y
 
-	// 	up.GetX(),
-	// 	up.GetY(),
-	// 	up.GetZ(),
-	// )
+	fmt.Printf("hypot: %f, adjacent: %f\n", hypot, adjacent)
 
-	// return ToGoSieMatrix(lookAtMat)
+	angleDownRad := math.Acos(adjacent / hypot)        // Angle in radians
+	angleDownDegrees := angleDownRad * (180 / math.Pi) // Convert to degrees
+	angleDownDegrees = 90 - angleDownDegrees           // Adjust to match the camera's downward angle
+	fmt.Printf("Angle down: %f degrees\n", angleDownDegrees)
 
-	// pVec := mgl64.Vec3{up.GetX(), up.GetY(), up.GetZ()}
-	// lookAtQuat := mgl64.QuatLookAtV(
-	// 	mgl64.Vec3{c.GetX(), c.GetY(), c.GetZ()},
-	// 	mgl64.Vec3{lookAt.GetX(), lookAt.GetY(), lookAt.GetZ()},
-	// 	mgl64.Vec3{pVec[0], pVec[1], pVec[2]},
-	// )
-	// lookAtMat := lookAtQuat.Mat4()
+	return degreesToRadians(angleDownDegrees)
 
-	// return ToGoSieMatrix(lookAtMat)
+}
 
+func angleY(lookAt Vector3, cameraLocation Point3d) float64 {
+	dirY := lookAt.Z - cameraLocation.Z
+	dirX := lookAt.X - cameraLocation.X
+	angleY := math.Atan2(dirY, dirX)
+	angleY = angleY - math.Pi/2 // Adjust to match the camera's forward direction
+	return angleY
+}
+
+func degreesToRadians(degrees float64) float64 {
+	return degrees * (math.Pi / 180)
+}
+
+func angleX(lookAt Vector3, cameraLocation Point3d) float64 {
+	dirY := lookAt.Y - cameraLocation.Y
+	dirZ := lookAt.Z - cameraLocation.Z
+	angleX := math.Atan2(dirY, dirZ)
+	// angleX = angleX - math.Pi/2 // Adjust to match the camera's forward direction
+
+	angleDegrees := angleX * (180 / math.Pi)
+	fmt.Printf("angleX: %f\n", angleDegrees)
+
+	return angleX
+}
+
+func angleZ(lookAt Vector3, cameraLocation Point3d) float64 {
+	dirX := lookAt.X - cameraLocation.X
+	dirY := lookAt.Y - cameraLocation.Y
+	angleZ := math.Atan2(dirY, dirX)
+	// angleZ = angleZ - math.Pi/2 // Adjust to match the camera's forward direction
+
+	angleDegrees := angleZ * (180 / math.Pi)
+	fmt.Printf("angleZ: %f\n", angleDegrees)
+
+	return angleZ
 }
 
 func (c *Camera) LookAt(lookAt Vector3, up Vector3) {
 
 	sMat := NewCameraLookMatrixAt3(*c.cameraPosition, lookAt, up)
 
-	// .MultiplyBy(sMatX)
-
-	// lookAtMat := mgl64.LookAt(
-
-	// 	lookAt.GetX(),
-	// 	lookAt.GetY(),
-	// 	lookAt.GetZ(),
-	// 	c.cameraPosition.GetX(),
-	// 	c.cameraPosition.GetY(),
-	// 	c.cameraPosition.GetZ(),
-	// 	up.GetX(),
-	// 	up.GetY(),
-	// 	up.GetZ(),
-	// )
-
-	// // Create a quaternion for the up vector to ensure the camera's up direction is respected.
-	// upVec := mgl64.Vec3{up.GetX(), up.GetY(), up.GetZ()}
-	// lookAtQuat := mgl64.QuatLookAtV(
-
-	// 	mgl64.Vec3{lookAt.GetX(), lookAt.GetY(), lookAt.GetZ()},
-	// 	mgl64.Vec3{c.cameraPosition.GetX(), c.cameraPosition.GetY(), c.cameraPosition.GetZ()},
-
-	// 	upVec,
-	// )
-	// lookAtMat := lookAtQuat.Mat4()
-
-	// sMat := ToGoSieMatrix(lookAtMat)
 	c.camMatrixRev = sMat
 }
 
@@ -150,21 +160,21 @@ func (c *Camera) AddXPosition(x float64) {
 	if c.cameraPosition == nil {
 		c.cameraPosition = NewPoint3d(0, 0, 0)
 	}
-	c.cameraPosition.Points[0] += x
+	c.cameraPosition.X += x
 }
 
 func (c *Camera) AddYPosition(y float64) {
 	if c.cameraPosition == nil {
 		c.cameraPosition = NewPoint3d(0, 0, 0)
 	}
-	c.cameraPosition.Points[1] += y
+	c.cameraPosition.Y += y
 }
 
 func (c *Camera) AddZPosition(z float64) {
 	if c.cameraPosition == nil {
 		c.cameraPosition = NewPoint3d(0, 0, 0)
 	}
-	c.cameraPosition.Points[2] += z
+	c.cameraPosition.Z += z
 }
 
 func (c *Camera) GetMatrix() *Matrix {
@@ -182,9 +192,9 @@ func (c *Camera) AddAngle(x, y, z float64) {
 
 	c.cameraAngle.Add(x, y, z)
 
-	rotY := mgl64.HomogRotate3DY(-c.cameraAngle.GetY())
-	rotX := mgl64.HomogRotate3DX(-c.cameraAngle.GetX())
-	rotZ := mgl64.HomogRotate3DZ(-c.cameraAngle.GetZ())
+	rotY := mgl64.HomogRotate3DY(-c.cameraAngle.Y)
+	rotX := mgl64.HomogRotate3DX(-c.cameraAngle.X)
+	rotZ := mgl64.HomogRotate3DZ(-c.cameraAngle.Z)
 	camRev := rotZ.Mul4(rotY).Mul4(rotX)
 
 	c.camMatrixRev = ToGoSieMatrix(camRev)

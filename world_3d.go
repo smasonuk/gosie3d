@@ -7,6 +7,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+const UP_DIR = -1.0
+
 type World_3d struct {
 	objects               []*Object3d
 	objXpos               []float64
@@ -77,12 +79,12 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 	})
 
 	// // Draw objects that should be drawn first
-	// for _, obj := range w.objectToDrawFirst {
-	// 	// m := TransMatrix(w.objectToDrawFirstXpos[i]-camX, w.objectToDrawFirstYpos[i]-camY, w.objectToDrawFirstZpos[i]-camZ)
-	// 	// obj.ApplyMatrixTemp(cam.camMatrixRev.MultiplyBy(m))
-	// 	obj.ApplyMatrixTemp(cam.camMatrixRev)
-	// 	obj.PaintSolid(screen, xsize/2, ysize/2, true)
-	// }
+	for _, obj := range w.objectToDrawFirst {
+		// m := TransMatrix(w.objectToDrawFirstXpos[i]-camX, w.objectToDrawFirstYpos[i]-camY, w.objectToDrawFirstZpos[i]-camZ)
+		// obj.ApplyMatrixTemp(cam.camMatrixRev.MultiplyBy(m))
+		obj.ApplyMatrixTemp(cam.camMatrixRev)
+		obj.PaintSolid(screen, xsize/2, ysize/2, true)
+	}
 
 	for _, i := range sortedIndices {
 		obj := w.objects[i]

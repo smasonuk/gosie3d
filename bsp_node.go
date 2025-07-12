@@ -8,7 +8,7 @@ import (
 )
 
 type BspNode struct {
-	normal           []float64
+	normal           *Vector3
 	Left             *BspNode
 	Right            *BspNode
 	colRed           uint8
@@ -21,7 +21,7 @@ type BspNode struct {
 }
 
 // todo: change Normal to a Vector3 type
-func NewBspNode(facePoints [][]float64, faceNormal []float64, faceColor color.RGBA, pointIndices []int, normalIdx int) *BspNode {
+func NewBspNode(facePoints [][]float64, faceNormal *Vector3, faceColor color.RGBA, pointIndices []int, normalIdx int) *BspNode {
 	b := &BspNode{
 		normal:           faceNormal,
 		colRed:           faceColor.R,

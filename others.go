@@ -5,24 +5,24 @@ package gosie3d
 // Subtract returns a new Vector3 that is the difference of v1 and v2.
 func Subtract(v1, v2 *Vector3) *Vector3 {
 	return NewVector3(
-		v1.GetX()-v2.GetX(),
-		v1.GetY()-v2.GetY(),
-		v1.GetZ()-v2.GetZ(),
+		v1.X-v2.X,
+		v1.Y-v2.Y,
+		v1.Z-v2.Z,
 	)
 }
 
 // Cross2 computes the Cross2 product of two vectors and returns a new Vector3.
 func Cross2(v1, v2 *Vector3) *Vector3 {
 	return NewVector3(
-		v1.GetY()*v2.GetZ()-v1.GetZ()*v2.GetY(),
-		v1.GetZ()*v2.GetX()-v1.GetX()*v2.GetZ(),
-		v1.GetX()*v2.GetY()-v1.GetY()*v2.GetX(),
+		v1.Y*v2.Z-v1.Z*v2.Y,
+		v1.Z*v2.X-v1.X*v2.Z,
+		v1.X*v2.Y-v1.Y*v2.X,
 	)
 }
 
 // Dot computes the dot product of two vectors.
 func Dot(v1, v2 *Vector3) float64 {
-	return v1.GetX()*v2.GetX() + v1.GetY()*v2.GetY() + v1.GetZ()*v2.GetZ()
+	return v1.X*v2.X + v1.Y*v2.Y + v1.Z*v2.Z
 }
 
 // NewLookAtMatrix creates a view matrix for a camera using the provided Vector3 struct.
@@ -52,17 +52,17 @@ func Dot(v1, v2 *Vector3) float64 {
 // 	}
 
 // 	// Set the rotation part (transposed basis vectors)
-// 	m[0][0] = xAxis.GetX()
-// 	m[0][1] = yAxis.GetX()
-// 	m[0][2] = zAxis.GetX()
+// 	m[0][0] = xAxis.X
+// 	m[0][1] = yAxis.X
+// 	m[0][2] = zAxis.X
 
-// 	m[1][0] = xAxis.GetY()
-// 	m[1][1] = yAxis.GetY()
-// 	m[1][2] = zAxis.GetY()
+// 	m[1][0] = xAxis.Y
+// 	m[1][1] = yAxis.Y
+// 	m[1][2] = zAxis.Y
 
-// 	m[2][0] = xAxis.GetZ()
-// 	m[2][1] = yAxis.GetZ()
-// 	m[2][2] = zAxis.GetZ()
+// 	m[2][0] = xAxis.Z
+// 	m[2][1] = yAxis.Z
+// 	m[2][2] = zAxis.Z
 
 // 	// Set the translation part using the dot product
 // 	m[3][0] = -Dot(xAxis, position)
@@ -97,17 +97,17 @@ func NewCameraLookAt2(x, y, z, lookX, lookY, lookZ float64) *Camera {
 	m := viewMatrix.ThisMatrix
 
 	// Set the rotation part with basis vectors as ROWS.
-	m[0][0] = xAxisVec.GetX()
-	m[0][1] = xAxisVec.GetY()
-	m[0][2] = xAxisVec.GetZ()
+	m[0][0] = xAxisVec.X
+	m[0][1] = xAxisVec.Y
+	m[0][2] = xAxisVec.Z
 
-	m[1][0] = yAxisVec.GetX()
-	m[1][1] = yAxisVec.GetY()
-	m[1][2] = yAxisVec.GetZ()
+	m[1][0] = yAxisVec.X
+	m[1][1] = yAxisVec.Y
+	m[1][2] = yAxisVec.Z
 
-	m[2][0] = zAxisVec.GetX()
-	m[2][1] = zAxisVec.GetY()
-	m[2][2] = zAxisVec.GetZ()
+	m[2][0] = zAxisVec.X
+	m[2][1] = zAxisVec.Y
+	m[2][2] = zAxisVec.Z
 
 	// Set the translation part in the fourth row.
 	m[3][0] = -Dot(xAxisVec, eye)
@@ -143,17 +143,17 @@ func NewLookAtMatrix2(eye, target, up *Vector3) *Matrix {
 
 	// CORRECTED: The rotation part is now built from ROWS, not columns.
 	// This matches how your TransformObj function works.
-	m[0][0] = xAxisVec.GetX()
-	m[0][1] = xAxisVec.GetY()
-	m[0][2] = xAxisVec.GetZ()
+	m[0][0] = xAxisVec.X
+	m[0][1] = xAxisVec.Y
+	m[0][2] = xAxisVec.Z
 
-	m[1][0] = yAxisVec.GetX()
-	m[1][1] = yAxisVec.GetY()
-	m[1][2] = yAxisVec.GetZ()
+	m[1][0] = yAxisVec.X
+	m[1][1] = yAxisVec.Y
+	m[1][2] = yAxisVec.Z
 
-	m[2][0] = zAxisVec.GetX()
-	m[2][1] = zAxisVec.GetY()
-	m[2][2] = zAxisVec.GetZ()
+	m[2][0] = zAxisVec.X
+	m[2][1] = zAxisVec.Y
+	m[2][2] = zAxisVec.Z
 
 	// The translation part moves the world relative to the camera's new orientation.
 	// This calculation remains the same.

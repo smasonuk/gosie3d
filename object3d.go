@@ -83,11 +83,12 @@ func (o *Object3d) ApplyMatrixTemp(aMatrix *Matrix) {
 
 	// The renormalization step you already had is still good practice to prevent
 	// floating-point drift from affecting the length of the normal.
-	for _, n := range o.transNormalMesh.Points.ThisMatrix {
-		v := NewVector3dFromArray(n)
-		v.Normalize()
-		copy(n, v.Normal[:])
-	}
+	// for _, n := range o.transNormalMesh.Points.ThisMatrix {
+	// 	v := NewVector3dFromArray(n)
+	// 	v.Normalize()
+	// 	// copy(n, v.Normal[:]) # not sure why this was needed
+	// 	// n = []float64{v.X, v.Y, v.Z, 1.0} // Ensure we keep the W component as 1.0
+	// }
 
 	// Use the original method to transform the vertex positions (rotation and translation).
 	rotMatrixTemp.TransformObj(o.faceMesh.Points, o.transFaceMesh.Points)
@@ -100,7 +101,7 @@ func (o *Object3d) createBspTree(faces *FaceStore, newFaces *FaceMesh, newNormMe
 
 	parentFace := o.choosePlane(faces)
 	originalNormal, normalIndex := newNormMesh.AddNormal(parentFace.GetNormal())
-	parentFace.SetNormal(originalNormal)
+	parentFace.SetNormal(NewVector3(originalNormal[0], originalNormal[1], originalNormal[2]))
 	newFace, parentIndices := newFaces.AddFace(parentFace)
 	parent := NewBspNode(newFace.Points, newFace.GetNormal(), newFace.Col, parentIndices, normalIndex)
 	pPlane := NewPlane(newFace, newFace.GetNormal())
@@ -575,7 +576,7 @@ func NewUVSphere2(radius float64, sectors, stacks int, bodyClr, stripeClr color.
 		normalVec[2] *= -1
 
 		// Explicitly set this perfect normal on the face.
-		face.SetNormal(normalVec)
+		face.SetNormal(NewVector3(normalVec[0], normalVec[1], normalVec[2]))
 		// We no longer need the FACE_NORMAL/FACE_REVERSE flag.
 		face.Finished(FACE_REVERSE)
 		return face

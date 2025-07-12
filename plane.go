@@ -11,11 +11,14 @@ type Plane struct {
 
 const planeThickness = 0.1
 
-func NewPlane(f *Face, normal []float64) *Plane {
+func NewPlane(f *Face, normal *Vector3) *Plane {
 	p := &Plane{
-		A: normal[0],
-		B: normal[1],
-		C: normal[2],
+		// A: normal[0],
+		// B: normal[1],
+		// C: normal[2],
+		A: normal.X,
+		B: normal.Y,
+		C: normal.Z,
 	}
 	p.D = -(p.A*f.Points[0][0] + p.B*f.Points[0][1] + p.C*f.Points[0][2])
 	return p
@@ -42,8 +45,8 @@ func (p *Plane) PointOnPlane(x, y, z float64) float64 {
 // lIntersect checks if a line segment defined by two points (p1, p2) intersects the plane.
 // This is a prerequisite for calculating the intersection point.
 func (p *Plane) lIntersect(p1, p2 *Point3d) bool {
-	a := p.PointOnPlane(p1.X, p1.GetY(), p1.GetZ())
-	b := p.PointOnPlane(p2.GetX(), p2.GetY(), p2.GetZ())
+	a := p.PointOnPlane(p1.X, p1.Y, p1.Z)
+	b := p.PointOnPlane(p2.X, p2.Y, p2.Z)
 
 	// If either point is on the plane, this method considers it not a "true" intersection
 	// for the purpose of splitting. The calling logic handles this case.
@@ -60,8 +63,8 @@ func (p *Plane) lIntersect(p1, p2 *Point3d) bool {
 // intersects with the plane.
 func (p *Plane) LineIntersect(p1, p2 *Point3d) *Point3d {
 	// Determine which side of the plane each endpoint lies on.
-	x1, y1, z1 := p1.GetX(), p1.GetY(), p1.GetZ()
-	x2, y2, z2 := p2.GetX(), p2.GetY(), p2.GetZ()
+	x1, y1, z1 := p1.X, p1.Y, p1.Z
+	x2, y2, z2 := p2.X, p2.Y, p2.Z
 
 	if !p.lIntersect(p1, p2) {
 		return nil
@@ -145,20 +148,20 @@ func (p *Plane) SplitFace(aFace *Face) []*Face {
 		if p.lIntersect(p3d1, p3d2) {
 			pointIntersect := p.LineIntersect(p3d1, p3d2)
 			inter = true
-			faces[currentFace].AddPoint(p3d1.GetX(), p3d1.GetY(), p3d1.GetZ())
+			faces[currentFace].AddPoint(p3d1.X, p3d1.Y, p3d1.Z)
 			if pointIntersect != nil {
-				faces[currentFace].AddPoint(pointIntersect.GetX(), pointIntersect.GetY(), pointIntersect.GetZ())
+				faces[currentFace].AddPoint(pointIntersect.X, pointIntersect.Y, pointIntersect.Z)
 				currentFace = 1 - currentFace // flip
-				faces[currentFace].AddPoint(pointIntersect.GetX(), pointIntersect.GetY(), pointIntersect.GetZ())
+				faces[currentFace].AddPoint(pointIntersect.X, pointIntersect.Y, pointIntersect.Z)
 			}
 		} else {
-			if p.PointOnPlane(p3d1.GetX(), p3d1.GetY(), p3d1.GetZ()) == 0 {
+			if p.PointOnPlane(p3d1.X, p3d1.Y, p3d1.Z) == 0 {
 				inter = true
-				faces[currentFace].AddPoint(p3d1.GetX(), p3d1.GetY(), p3d1.GetZ())
+				faces[currentFace].AddPoint(p3d1.X, p3d1.Y, p3d1.Z)
 				currentFace = 1 - currentFace // flip
-				faces[currentFace].AddPoint(p3d1.GetX(), p3d1.GetY(), p3d1.GetZ())
+				faces[currentFace].AddPoint(p3d1.X, p3d1.Y, p3d1.Z)
 			} else {
-				faces[currentFace].AddPoint(p3d1.GetX(), p3d1.GetY(), p3d1.GetZ())
+				faces[currentFace].AddPoint(p3d1.X, p3d1.Y, p3d1.Z)
 			}
 		}
 	}
