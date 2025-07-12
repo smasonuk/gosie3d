@@ -73,11 +73,10 @@ func (f *Face) GetPlane() *Plane {
 
 func (f *Face) createNormal() {
 	if len(f.Points) < 3 {
-		// f.normal = []float64{0, 0, 1, 0}
 		f.normal = NewVector3(0, 0, 1)
 		return
 	}
-	// f.normal = make([]float64, 4)
+
 	f.normal = NewVector3(0, 0, 0)
 	x1, y1, z1 := f.Points[0][0], f.Points[0][1], f.Points[0][2]
 	x2, y2, z2 := f.Points[1][0], f.Points[1][1], f.Points[1][2]
@@ -87,22 +86,15 @@ func (f *Face) createNormal() {
 	v1, v2, v3 := x3-x2, y3-y2, z3-z2
 
 	if f.meRev {
-		// f.normal[0] = -(u2*v3 - u3*v2)
-		// f.normal[1] = -(u3*v1 - u1*v3)
-		// f.normal[2] = -(u1*v2 - u2*v1)
 		f.normal.X = -(u2*v3 - u3*v2)
 		f.normal.Y = -(u3*v1 - u1*v3)
 		f.normal.Z = -(u1*v2 - u2*v1)
 	} else {
-		// f.normal[0] = u2*v3 - u3*v2
-		// f.normal[1] = u3*v1 - u1*v3
-		// f.normal[2] = u1*v2 - u2*v1
 		f.normal.X = u2*v3 - u3*v2
 		f.normal.Y = u3*v1 - u1*v3
 		f.normal.Z = u1*v2 - u2*v1
 	}
 
-	// nor := NewVector3dFromArray(f.normal)
 	nor := f.normal.Copy()
 	nor.Normalize()
 	f.normal = nor.Copy()

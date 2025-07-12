@@ -81,15 +81,6 @@ func (o *Object3d) ApplyMatrixTemp(aMatrix *Matrix) {
 	// Use the new, correct method to transform the normals (rotation only).
 	rotMatrixTemp.TransformNormals(o.normalMesh.Points, o.transNormalMesh.Points)
 
-	// The renormalization step you already had is still good practice to prevent
-	// floating-point drift from affecting the length of the normal.
-	// for _, n := range o.transNormalMesh.Points.ThisMatrix {
-	// 	v := NewVector3dFromArray(n)
-	// 	v.Normalize()
-	// 	// copy(n, v.Normal[:]) # not sure why this was needed
-	// 	// n = []float64{v.X, v.Y, v.Z, 1.0} // Ensure we keep the W component as 1.0
-	// }
-
 	// Use the original method to transform the vertex positions (rotation and translation).
 	rotMatrixTemp.TransformObj(o.faceMesh.Points, o.transFaceMesh.Points)
 }

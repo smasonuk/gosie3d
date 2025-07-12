@@ -167,84 +167,8 @@ func (m *Matrix) String() string {
 	return sb.String()
 }
 
-// LookAtMatrix generates a complete view matrix that orients the world
-// from the perspective of an eye position looking at a target.
-func LookAtMatrix(eye, target, up *Vector3) *Matrix {
-	// --- Calculate Camera's Local Axes (Right-Handed System) ---
-
-	// 1. zAxis: The "forward" vector of the camera. Points from the target to the eye.
-	zAxisVec := NewVector3(
-		eye.X-target.X,
-		eye.Y-target.Y,
-		eye.Z-target.Z,
-	)
-	zAxisVec.Normalize()
-	// zAxis := zAxisVec.Normal
-	zAxis := zAxisVec.Copy()
-
-	// 2. xAxis: The "right" vector of the camera.
-	// xAxisVec := NewVector3dFromArray(Cross(up.Normal[:], zAxis[:]))
-	xAxisVec := Cross(up, zAxis)
-	xAxisVec.Normalize()
-	// xAxis := xAxisVec.Normal
-	xAxis := xAxisVec.Copy()
-
-	// 3. yAxis: The "up" vector of the camera.
-	// yAxis := Cross(zAxis[:], xAxis[:])
-	yAxis := Cross(zAxis, xAxis)
-
-	// --- Construct the Final View Matrix ---
-	// This matrix combines the rotation and translation in the specific
-	// format your engine's TransformObj function requires.
-	viewMatrix := IdentMatrix()
-
-	// The rotation part is built from the basis vectors in columns.
-	// This correctly orients the world to the camera's view.
-	// viewMatrix.ThisMatrix[0][0] = xAxis[0]
-	// viewMatrix.ThisMatrix[1][0] = xAxis[1]
-	// viewMatrix.ThisMatrix[2][0] = xAxis[2]
-	viewMatrix.ThisMatrix[0][0] = xAxis.X
-	viewMatrix.ThisMatrix[1][0] = xAxis.Y
-	viewMatrix.ThisMatrix[2][0] = xAxis.Z
-
-	// viewMatrix.ThisMatrix[0][1] = yAxis[0]
-	// viewMatrix.ThisMatrix[1][1] = yAxis[1]
-	// viewMatrix.ThisMatrix[2][1] = yAxis[2]
-	viewMatrix.ThisMatrix[0][1] = yAxis.X
-	viewMatrix.ThisMatrix[1][1] = yAxis.Y
-	viewMatrix.ThisMatrix[2][1] = yAxis.Z
-
-	// viewMatrix.ThisMatrix[0][2] = zAxis[0]
-	// viewMatrix.ThisMatrix[1][2] = zAxis[1]
-	// viewMatrix.ThisMatrix[2][2] = zAxis[2]
-	viewMatrix.ThisMatrix[0][2] = zAxis.X
-	viewMatrix.ThisMatrix[1][2] = zAxis.Y
-	viewMatrix.ThisMatrix[2][2] = zAxis.Z
-
-	// The translation part moves the entire world so the camera is at the origin.
-	// It is calculated by taking the dot product of each axis with the eye's position.
-	// viewMatrix.ThisMatrix[3][0] = -(xAxis[0]*eye.X + xAxis[1]*eye.Y + xAxis[2]*eye.Z)
-	// viewMatrix.ThisMatrix[3][1] = -(yAxis[0]*eye.X + yAxis[1]*eye.Y + yAxis[2]*eye.Z)
-	// viewMatrix.ThisMatrix[3][2] = -(zAxis[0]*eye.X + zAxis[1]*eye.Y + zAxis[2]*eye.Z)
-	viewMatrix.ThisMatrix[3][0] = -(xAxis.X*eye.X + xAxis.Y*eye.Y + xAxis.Z*eye.Z)
-	viewMatrix.ThisMatrix[3][1] = -(yAxis.X*eye.X + yAxis.Y*eye.Y + yAxis.Z*eye.Z)
-	viewMatrix.ThisMatrix[3][2] = -(zAxis.X*eye.X + zAxis.Y*eye.Y + zAxis.Z*eye.Z)
-
-	return viewMatrix
-}
-
 // Cross calculates the cross product of two 3-element vectors.
 func Cross(a, b *Vector3) *Vector3 {
-	// return []float64{
-	// 	// a[1]*b[2] - a[2]*b[1],
-	// 	// a[2]*b[0] - a[0]*b[2],
-	// 	// a[0]*b[1] - a[1]*b[0],
-	// 	// 0, // W component is 0 for vectors
-	// 	a.Y*b.Z - a.Z*b.Y,
-	// 	a.Z*b.X - a.X*b.Z,
-	// 	a.X*b.Y - a.Y*b.X,
-	// 	0, // W component is 0 for vectors
-	// }
 	return NewVector3(
 		a.Y*b.Z-a.Z*b.Y,
 		a.Z*b.X-a.X*b.Z,
@@ -262,19 +186,6 @@ func ToGoSieMatrix(m mgl64.Mat4) *Matrix {
 		},
 	)
 }
-
-// // rotate vector3 by this matrix
-//
-//	func (m *Matrix) RotateVector3(v *Vector3) *Vector3 {
-//		// x, y, z := v.Normal[0], v.Normal[1], v.Normal[2]
-//		x, y, z := v.X, v.Y, v.Z
-//		return NewVector3(
-//			m.ThisMatrix[0][0]*x+m.ThisMatrix[1][0]*y+m.ThisMatrix[2][0]*z,
-//			m.ThisMatrix[0][1]*x+m.ThisMatrix[1][1]*y+m.ThisMatrix[2][1]*z,
-//			m.ThisMatrix[0][2]*x+m.ThisMatrix[1][2]*y+m.ThisMatrix[2][2]*z,
-//		)
-//	}
-//
 
 // RotateVector3 rotates a Vector3 by the matrix's 3x3 rotation component.
 // It does not apply translation, making it suitable for direction vectors.

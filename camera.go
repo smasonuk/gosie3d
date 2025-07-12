@@ -1,7 +1,6 @@
 package gosie3d
 
 import (
-	"fmt"
 	"math"
 
 	"github.com/go-gl/mathgl/mgl64"
@@ -60,30 +59,17 @@ func NewCameraLookMatrixAt3(cameraLocation Point3d, lookAt Vector3, up Vector3) 
 	dirX := lookAt.X - cameraLocation.X
 	dirZ := lookAt.Z - cameraLocation.Z
 	lookADirVec := NewVector3(dirX, dirY, dirZ)
-	// angleY := math.Atan2(dirY, dirX)
 
 	angleRadY := angleY(lookAt, cameraLocation)
-	// angleDegreesY := angleRadY * (180 / math.Pi)
-
 	sMatY := NewRotationMatrix(ROTY, angleRadY)
-	// sMatX = NewRotationMatrix(ROTX, angleRadX)
-	// sMatX := NewRotationMatrix(ROTX, degreesToRadians(40))
-
 	newLookAtDirVec := sMatY.RotateVector3(lookADirVec)
-	// fmt.Printf("angleDegreesY: %v\n", angleDegreesY)
-	// fmt.Printf("lookAt: %v\n", lookADirVec)
-	// fmt.Printf("newLookAtDirVec: %v\n", newLookAtDirVec)
 
 	angleDown := angleDown(newLookAtDirVec)
-	angleDownDeg := angleDown * (180 / math.Pi)
-	fmt.Printf("angle down: %f degrees\n", angleDownDeg)
+
 	sMatX := NewRotationMatrix(ROTX, angleDown)
 
 	sMat := sMatX.MultiplyBy(sMatY.MultiplyBy(sTransWorldToCamera))
 
-	// sMat = sMat.MultiplyBy(looatAtPointsMatrix)
-
-	// sMat := sMatY.MultiplyBy(sTransWorldToCamera)
 	return sMat
 }
 
@@ -91,13 +77,9 @@ func angleDown(lookADirVec *Vector3) float64 {
 	hypot := math.Sqrt(lookADirVec.X*lookADirVec.X + lookADirVec.Y*lookADirVec.Y + lookADirVec.Z*lookADirVec.Z)
 	adjacent := lookADirVec.Y
 
-	fmt.Printf("hypot: %f, adjacent: %f\n", hypot, adjacent)
-
 	angleDownRad := math.Acos(adjacent / hypot)        // Angle in radians
 	angleDownDegrees := angleDownRad * (180 / math.Pi) // Convert to degrees
 	angleDownDegrees = 90 - angleDownDegrees
-
-	fmt.Printf("Angle down: %f degrees\n", angleDownDegrees)
 
 	return degreesToRadians(angleDownDegrees)
 
@@ -113,30 +95,6 @@ func angleY(lookAt Vector3, cameraLocation Point3d) float64 {
 
 func degreesToRadians(degrees float64) float64 {
 	return degrees * (math.Pi / 180)
-}
-
-func angleX(lookAt Vector3, cameraLocation Point3d) float64 {
-	dirY := lookAt.Y - cameraLocation.Y
-	dirZ := lookAt.Z - cameraLocation.Z
-	angleX := math.Atan2(dirY, dirZ)
-	// angleX = angleX - math.Pi/2 // Adjust to match the camera's forward direction
-
-	angleDegrees := angleX * (180 / math.Pi)
-	fmt.Printf("angleX: %f\n", angleDegrees)
-
-	return angleX
-}
-
-func angleZ(lookAt Vector3, cameraLocation Point3d) float64 {
-	dirX := lookAt.X - cameraLocation.X
-	dirY := lookAt.Y - cameraLocation.Y
-	angleZ := math.Atan2(dirY, dirX)
-	// angleZ = angleZ - math.Pi/2 // Adjust to match the camera's forward direction
-
-	angleDegrees := angleZ * (180 / math.Pi)
-	fmt.Printf("angleZ: %f\n", angleDegrees)
-
-	return angleZ
 }
 
 func (c *Camera) LookAt(lookAt Vector3, up Vector3) {

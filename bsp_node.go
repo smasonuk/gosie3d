@@ -1,7 +1,6 @@
 package gosie3d
 
 import (
-	"fmt"
 	"image/color"
 	"math"
 
@@ -21,9 +20,8 @@ type BspNode struct {
 	normalIndex      int
 }
 
-const nearPlaneZ = 10
+const nearPlaneZ = 25
 
-// todo: change Normal to a Vector3 type
 func NewBspNode(facePoints [][]float64, faceNormal *Vector3, faceColor color.RGBA, pointIndices []int, normalIdx int) *BspNode {
 	b := &BspNode{
 		normal:           faceNormal,
@@ -120,7 +118,7 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 	x, y int,
 	verticesInCameraSpace *Matrix,
 	normalsInCameraSpace *Matrix,
-	changeColor bool,
+	shadePoly bool,
 	firstTransformedPoint []float64,
 	transformedNormal []float64) bool {
 
@@ -137,64 +135,36 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 	}
 	somePointsBehindAndInFront := numPointsBehind > 0 && numPointsBehind < len(b.facePointIndices)
 	allPointsBehind := numPointsBehind == len(b.facePointIndices)
-	// allPointsInFront := numPointsBehind == 0
-	// somePointsBehind := numPointsBehind > 0
 
 	// need to split
 	if somePointsBehindAndInFront {
-		// fmt.Print(allPointsBehind)
 		createFaceFromVertices := b.createFaceFromVertices(verticesInCameraSpace)
 		faceInFront := b.getFaceInFront(createFaceFromVertices)
 		pointsToUse = faceInFront
 	}
 
-	// if somePointsBehind {
-	// } else {
-
-	// Project the points into screen space
-	// for i, pointIndex := range b.facePointIndices {
-	// 	pnt := verticesInCameraSpace.ThisMatrix[pointIndex]
-	// 	if pnt[2] < 0 { // Z-clipping
-	// 		if b.Left != nil {
-	// 			b.Left.PaintWithShading(screen, x, y, verticesInCameraSpace, normalsInCameraSpace, changeColor)
-	// 		}
-	// 		return true
-	// 	}
-	// 	b.xp[i] = float32((400*pnt[0])/pnt[2]) + float32(x)
-	// 	b.yp[i] = float32((400*pnt[1])/pnt[2]) + float32(y)
-	// }
-
 	// If all points are behind the camera, we don't need to draw this polygon
 	if allPointsBehind {
 		if b.Left != nil {
-			b.Left.PaintWithShading(screen, x, y, verticesInCameraSpace, normalsInCameraSpace, changeColor)
+			b.Left.PaintWithShading(screen, x, y, verticesInCameraSpace, normalsInCameraSpace, shadePoly)
 		}
 		return true
-	}
-
-	if len(pointsToUse) < 3 {
-		fmt.Print()
-
 	}
 
 	screenPointsX := make([]float32, len(pointsToUse))
 	screenPointsY := make([]float32, len(pointsToUse))
 
 	for i, points := range pointsToUse {
-		// pnt := pointsToUse[i]
-		// b.xp[i] = float32((400*points[0])/points[2]) + float32(x)
-		// b.yp[i] = float32((400*points[1])/points[2]) + float32(y)
 		screenPointsX[i] = float32((400*points[0])/points[2]) + float32(x)
 		screenPointsY[i] = float32((400*points[1])/points[2]) + float32(y)
 	}
 
 	polyColor := color.RGBA{R: uint8(b.colRed), G: uint8(b.colGreen), B: uint8(b.colBlue), A: 255}
 
-	if changeColor {
-		// Get the color based on lighting and position
+	if shadePoly {
 		polyColor = b.GetColor(verticesInCameraSpace, normalsInCameraSpace, firstTransformedPoint, transformedNormal, polyColor)
 	}
-	// fillConvexPolygon(screen, b.xp, b.yp, polyColor)
+
 	fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
 
 	return false
