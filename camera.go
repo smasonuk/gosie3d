@@ -95,7 +95,8 @@ func angleDown(lookADirVec *Vector3) float64 {
 
 	angleDownRad := math.Acos(adjacent / hypot)        // Angle in radians
 	angleDownDegrees := angleDownRad * (180 / math.Pi) // Convert to degrees
-	angleDownDegrees = 90 - angleDownDegrees           // Adjust to match the camera's downward angle
+	angleDownDegrees = 90 - angleDownDegrees
+
 	fmt.Printf("Angle down: %f degrees\n", angleDownDegrees)
 
 	return degreesToRadians(angleDownDegrees)

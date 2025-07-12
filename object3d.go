@@ -17,7 +17,7 @@ import (
 
 func (o *Object3d) PaintSolid(screen *ebiten.Image, x, y int, lightingChange bool) {
 	if o.root != nil {
-		o.root.PaintWithColor(screen, x, y, o.transFaceMesh.Points, o.transNormalMesh.Points, lightingChange)
+		o.root.PaintWithShading(screen, x, y, o.transFaceMesh.Points, o.transNormalMesh.Points, lightingChange)
 	}
 }
 

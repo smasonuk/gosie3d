@@ -1,1 +1,4 @@
-go back to the original sphere code...
+
+
+TODO:
+- clip on viewing frustrum

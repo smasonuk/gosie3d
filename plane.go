@@ -11,6 +11,16 @@ type Plane struct {
 
 const planeThickness = 0.1
 
+func NewPlaneFromPoint(pointOnPlane *Point3d, normal *Vector3) *Plane {
+	newPlane := &Plane{
+		A: normal.X,
+		B: normal.Y,
+		C: normal.Z,
+	}
+	newPlane.D = -(newPlane.A*pointOnPlane.X + newPlane.B*pointOnPlane.Y + newPlane.C*pointOnPlane.Z)
+	return newPlane
+}
+
 func NewPlane(f *Face, normal *Vector3) *Plane {
 	p := &Plane{
 		// A: normal[0],

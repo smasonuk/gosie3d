@@ -17,6 +17,14 @@ const (
 	FACE_REVERSE = 1
 )
 
+func NewFaceEmpty(col color.RGBA, normal *Vector3) *Face {
+	return &Face{
+		Points: make([][]float64, 0),
+		Col:    col,
+		normal: normal,
+	}
+}
+
 func NewFace(pnts [][]float64, col color.RGBA, normal *Vector3) *Face {
 	f := &Face{
 		Points: pnts,
