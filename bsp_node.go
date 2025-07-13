@@ -114,6 +114,25 @@ func (b *BspNode) getFaceInFront(face *Face) [][]float64 {
 	return nil
 }
 
+func getMidpoint(points [][]float64) []float64 {
+	if len(points) == 0 {
+		return nil
+	}
+
+	midpoint := make([]float64, 3)
+	for _, point := range points {
+		midpoint[0] += point[0]
+		midpoint[1] += point[1]
+		midpoint[2] += point[2]
+	}
+
+	midpoint[0] /= float64(len(points))
+	midpoint[1] /= float64(len(points))
+	midpoint[2] /= float64(len(points))
+
+	return midpoint
+}
+
 func (b *BspNode) paintPoly(screen *ebiten.Image,
 	x, y int,
 	verticesInCameraSpace *Matrix,
@@ -135,6 +154,9 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 	}
 	somePointsBehindAndInFront := numPointsBehind > 0 && numPointsBehind < len(b.facePointIndices)
 	allPointsBehind := numPointsBehind == len(b.facePointIndices)
+	midPoint := getMidpoint(pointsToUse)
+
+	firstTransformedPoint = midPoint
 
 	// need to split
 	if somePointsBehindAndInFront {
@@ -146,7 +168,10 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 	// If all points are behind the camera, we don't need to draw this polygon
 	if allPointsBehind {
 		if b.Left != nil {
-			b.Left.PaintWithShading(screen, x, y, verticesInCameraSpace, normalsInCameraSpace, shadePoly)
+			b.Left.PaintWithShading(screen, x, y,
+				verticesInCameraSpace,
+				normalsInCameraSpace,
+				shadePoly)
 		}
 		return true
 	}
@@ -162,7 +187,12 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 	polyColor := color.RGBA{R: uint8(b.colRed), G: uint8(b.colGreen), B: uint8(b.colBlue), A: 255}
 
 	if shadePoly {
-		polyColor = b.GetColor(verticesInCameraSpace, normalsInCameraSpace, firstTransformedPoint, transformedNormal, polyColor)
+		polyColor = b.GetColor(
+			verticesInCameraSpace,
+			normalsInCameraSpace,
+			firstTransformedPoint,
+			transformedNormal,
+			polyColor)
 	}
 
 	fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)

@@ -704,3 +704,20 @@ func NewObjectFromDXF(reader io.Reader, reverse int) (*Object3d, error) {
 	// 4. On success, return the fully populated object and a nil error.
 	return obj, nil
 }
+
+func (o *Object3d) GetPosition() *Point3d {
+	if o.position == nil {
+		o.position = NewPoint3d(0, 0, 0)
+	}
+	return o.position
+}
+
+func (o *Object3d) SetPosition(x, y, z float64) {
+	if o.position == nil {
+		o.position = NewPoint3d(x, y, z)
+	} else {
+		o.position.X = x
+		o.position.Y = y
+		o.position.Z = z
+	}
+}
