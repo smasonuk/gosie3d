@@ -85,6 +85,13 @@ func (o *Object3d) ApplyMatrixTemp(aMatrix *Matrix) {
 	rotMatrixTemp.TransformObj(o.faceMesh.Points, o.transFaceMesh.Points)
 }
 
+func (o *Object3d) ApplyMatrixPermanent(aMatrix *Matrix) {
+	o.ApplyMatrixTemp(aMatrix)
+
+	o.normalMesh.Points = o.transNormalMesh.Points.Copy()
+	o.faceMesh.Points = o.transFaceMesh.Points.Copy()
+}
+
 func (o *Object3d) createBspTree(faces *FaceStore, newFaces *FaceMesh, newNormMesh *NormalMesh) *BspNode {
 	if faces.FaceCount() == 0 {
 		return nil
