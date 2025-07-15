@@ -21,6 +21,7 @@ type BspNode struct {
 }
 
 const nearPlaneZ = 25
+const conversionFactor = 600 // Conversion factor for screen coordinates
 
 func NewBspNode(facePoints [][]float64, faceNormal *Vector3, faceColor color.RGBA, pointIndices []int, normalIdx int) *BspNode {
 	b := &BspNode{
@@ -180,8 +181,8 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 	screenPointsY := make([]float32, len(pointsToUse))
 
 	for i, points := range pointsToUse {
-		screenPointsX[i] = float32((400*points[0])/points[2]) + float32(x)
-		screenPointsY[i] = float32((400*points[1])/points[2]) + float32(y)
+		screenPointsX[i] = float32((conversionFactor*points[0])/points[2]) + float32(x)
+		screenPointsY[i] = float32((conversionFactor*points[1])/points[2]) + float32(y)
 	}
 
 	polyColor := color.RGBA{R: uint8(b.colRed), G: uint8(b.colGreen), B: uint8(b.colBlue), A: 255}
@@ -196,6 +197,17 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 	}
 
 	fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
+
+	// black := color.RGBA{R: 0, G: 0, B: 0, A: 200}
+	// fillConvexPolygon(screen, screenPointsX, screenPointsY, black)
+	// drawPolygonOutline(screen, screenPointsX, screenPointsY, 1.0, polyColor)
+
+	// black := color.RGBA{R: 0, G: 0, B: 0, A: 255}
+	// fillConvexPolygon(screen, screenPointsX, screenPointsY, black)
+	// drawPolygonOutline(screen, screenPointsX, screenPointsY, 1.0, polyColor)
+
+	// transPolyColor := color.RGBA{R: polyColor.R, G: polyColor.G, B: polyColor.B, A: 200}
+	// fillConvexPolygon(screen, screenPointsX, screenPointsY, transPolyColor)
 
 	return false
 }

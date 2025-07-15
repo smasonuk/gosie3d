@@ -71,7 +71,11 @@ func (o *Object3d) Finished() {
 	log.Printf("Normals: %d", len(o.normalMesh.Points.ThisMatrix))
 }
 
-func (o *Object3d) ApplyMatrixBatch(m *Matrix) {
+// func (o *Object3d) ApplyMatrixBatch(m *Matrix) {
+// 	o.rotMatrix = m.MultiplyBy(o.rotMatrix)
+// }
+
+func (o *Object3d) ApplyMatrix(m *Matrix) {
 	o.rotMatrix = m.MultiplyBy(o.rotMatrix)
 }
 
@@ -727,4 +731,13 @@ func (o *Object3d) SetPosition(x, y, z float64) {
 		o.position.Y = y
 		o.position.Z = z
 	}
+}
+
+func (o *Object3d) RollObject(directionOfRoll float64, amountOfMovement float64) {
+	rotMatrixY := NewRotationMatrix(ROTY, -directionOfRoll)
+	rotMatrixYBack := NewRotationMatrix(ROTY, directionOfRoll)
+	rotMatrixX := NewRotationMatrix(ROTX, -amountOfMovement)
+	all := rotMatrixY.MultiplyBy(rotMatrixX).MultiplyBy(rotMatrixYBack)
+
+	o.ApplyMatrix(all)
 }
