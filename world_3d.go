@@ -81,7 +81,7 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 	// // Draw objects that should be drawn first
 	for _, obj := range w.objectToDrawFirst {
 		obj.ApplyMatrixTemp(cam.camMatrixRev)
-		obj.PaintSolid(screen, xsize/2, ysize/2, true)
+		obj.PaintObject(screen, xsize/2, ysize/2, true)
 	}
 
 	for _, i := range sortedIndices {
@@ -99,6 +99,6 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 
 		// then, world space to camera space
 		obj.ApplyMatrixTemp(objToCam)
-		obj.PaintSolid(screen, xsize/2, ysize/2, true)
+		obj.PaintObject(screen, xsize/2, ysize/2, true)
 	}
 }

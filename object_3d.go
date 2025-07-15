@@ -15,29 +15,42 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-func (o *Object3d) PaintSolid(screen *ebiten.Image, x, y int, lightingChange bool) {
+// const (
+// 	PAINT_MODE_BSP PaintMode = iota
+// 	PAINT_MODE_IGNORE_BACKFACE
+// )
+
+// type PaintMode int
+
+type Object3d struct {
+	faceMesh           *FaceMesh
+	normalMesh         *NormalMesh
+	transFaceMesh      *FaceMesh
+	transNormalMesh    *NormalMesh
+	theFaces           *FaceStore
+	root               *BspNode
+	rotMatrix          *Matrix
+	position           *Point3d
+	canPaintWithoutBSP bool
+}
+
+func (o *Object3d) PaintObject(screen *ebiten.Image, x, y int, lightingChange bool) {
 	if o.root != nil {
 		o.root.PaintWithShading(screen, x, y, o.transFaceMesh.Points, o.transNormalMesh.Points, lightingChange)
 	}
 }
 
-type Object3d struct {
-	faceMesh        *FaceMesh
-	normalMesh      *NormalMesh
-	transFaceMesh   *FaceMesh
-	transNormalMesh *NormalMesh
-	theFaces        *FaceStore
-	root            *BspNode
-	rotMatrix       *Matrix
-	position        *Point3d
+func (o *Object3d) SetRotMatrix(m *Matrix) {
+	o.rotMatrix = m
 }
 
-func NewObject_3d() *Object3d {
+func NewObject_3d(canPaintWithoutBSP bool) *Object3d {
 	return &Object3d{
-		transFaceMesh:   NewFaceMesh(),
-		transNormalMesh: NewNormalMesh(),
-		theFaces:        NewFaceStore(),
-		rotMatrix:       IdentMatrix(),
+		transFaceMesh:      NewFaceMesh(),
+		transNormalMesh:    NewNormalMesh(),
+		theFaces:           NewFaceStore(),
+		rotMatrix:          IdentMatrix(),
+		canPaintWithoutBSP: canPaintWithoutBSP,
 	}
 }
 
@@ -179,7 +192,7 @@ func (o *Object3d) choosePlane(fs *FaceStore) *Face {
 }
 
 func NewCube() *Object3d {
-	obj := NewObject_3d()
+	obj := NewObject_3d(true)
 	s := 40.0 // size
 
 	// The 8 vertices of the cube
@@ -235,7 +248,7 @@ func NewCube() *Object3d {
 // It's centered at the origin and has the specified dimensions and color.
 func NewRectangle(width, height, length float64, clr color.RGBA) *Object3d {
 	// create a new, empty object to populate.
-	obj := NewObject_3d()
+	obj := NewObject_3d(true)
 
 	// calculate half-dimensions for centering the rectangle at the origin.
 	w2 := width / 2.0
@@ -294,7 +307,7 @@ func NewRectangle(width, height, length float64, clr color.RGBA) *Object3d {
 //	of 2 will split a face into a 2x2 grid of quads (8 triangles). A value of 1
 //	will result in one quad per face (2 triangles).
 func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdivisions int) *Object3d {
-	obj := NewObject_3d()
+	obj := NewObject_3d(true)
 	w2, h2, l2 := width/2.0, height/2.0, length/2.0
 
 	if subdivisions < 1 {
@@ -381,7 +394,7 @@ func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdi
 // An icosphere is a sphere made of a mesh of triangles, which is more
 // uniform than a traditional UV sphere.
 func NewSphere(radius float64, subdivisions int, clr color.RGBA) *Object3d {
-	obj := NewObject_3d()
+	obj := NewObject_3d(true)
 
 	// Define the 12 vertices of an Icosahedron.
 	// An icosahedron is a 20-sided polyhedron that forms the base of our sphere.
@@ -461,7 +474,7 @@ func NewSphere(radius float64, subdivisions int, clr color.RGBA) *Object3d {
 // NewUVSphere creates a sphere based on latitude/longitude rings (sectors and stacks).
 // This structure allows for a perfectly straight horizontal stripe.
 func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object3d {
-	obj := NewObject_3d()
+	obj := NewObject_3d(true)
 
 	// We loop through stacks (latitude) and sectors (longitude).
 	vertices := make([][3]float64, 0)
@@ -532,7 +545,7 @@ func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.R
 }
 
 func NewUVSphere2(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object3d {
-	obj := NewObject_3d()
+	obj := NewObject_3d(true)
 
 	vertices := make([][3]float64, 0)
 	for i := 0; i <= stacks; i++ {
@@ -638,7 +651,7 @@ func LoadObjectFromDXFFile(fileName string, reverse int) (*Object3d, error) {
 // already built, or an error if the file cannot be parsed.
 func NewObjectFromDXF(reader io.Reader, reverse int) (*Object3d, error) {
 	// 1. Create a new, empty object to populate.
-	obj := NewObject_3d()
+	obj := NewObject_3d(false)
 
 	scanner := bufio.NewScanner(reader)
 
@@ -734,10 +747,20 @@ func (o *Object3d) SetPosition(x, y, z float64) {
 }
 
 func (o *Object3d) RollObject(directionOfRoll float64, amountOfMovement float64) {
+	// rotMatrixY := NewRotationMatrix(ROTY, -directionOfRoll)
+	// rotMatrixYBack := NewRotationMatrix(ROTY, directionOfRoll)
+	// rotMatrixX := NewRotationMatrix(ROTX, -amountOfMovement)
+	// all := rotMatrixY.MultiplyBy(rotMatrixX).MultiplyBy(rotMatrixYBack)
+
+	// o.ApplyMatrix(all)
+	o.rotMatrix = ApplyRollObjectMatrix(directionOfRoll, amountOfMovement, o.rotMatrix)
+}
+
+func ApplyRollObjectMatrix(directionOfRoll float64, amountOfMovement float64, existingMatrix *Matrix) *Matrix {
 	rotMatrixY := NewRotationMatrix(ROTY, -directionOfRoll)
 	rotMatrixYBack := NewRotationMatrix(ROTY, directionOfRoll)
 	rotMatrixX := NewRotationMatrix(ROTX, -amountOfMovement)
 	all := rotMatrixY.MultiplyBy(rotMatrixX).MultiplyBy(rotMatrixYBack)
 
-	o.ApplyMatrix(all)
+	return all.MultiplyBy(existingMatrix)
 }

@@ -10,10 +10,12 @@ import (
 
 var (
 	whiteImage = ebiten.NewImage(3, 3)
+	whiteSub   *ebiten.Image
 )
 
 func init() {
 	whiteImage.Fill(color.White)
+	whiteSub = whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image)
 }
 
 func fillConvexPolygon(screen *ebiten.Image, xp, yp []float32, clr color.RGBA) {
@@ -49,7 +51,8 @@ func fillConvexPolygon(screen *ebiten.Image, xp, yp []float32, clr color.RGBA) {
 	// op.FillRule = ebiten.FillAll
 	// op.FillRule = ebiten.FillRuleEvenOdd
 	op.AntiAlias = true
-	screen.DrawTriangles(vertices, indices, whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image), op)
+	// screen.DrawTriangles(vertices, indices, whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image), op)
+	screen.DrawTriangles(vertices, indices, whiteSub, op)
 
 }
 
@@ -77,8 +80,8 @@ func drawPolygonOutline(screen *ebiten.Image, xp, yp []float32, strokeWidth floa
 
 	// Stroke options define how the line looks (width, join style, etc.).
 	strokeOp := &vector.StrokeOptions{
-		Width:    strokeWidth,
-		LineJoin: vector.LineJoinRound, // Round corners look nice.
+		Width: strokeWidth,
+		// LineJoin: vector.LineJoinMiter,
 	}
 
 	// AppendVerticesAndIndicesForStroke generates the vertices and indices needed to render the path's outline.
@@ -107,8 +110,8 @@ func drawPolygonOutline(screen *ebiten.Image, xp, yp []float32, strokeWidth floa
 		AntiAlias: true,
 	}
 
-	white := whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image)
+	// white := whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image)
 
 	// Draw the triangles that form the line stroke.
-	screen.DrawTriangles(vertices, indices, white, drawOp)
+	screen.DrawTriangles(vertices, indices, whiteSub, drawOp)
 }
