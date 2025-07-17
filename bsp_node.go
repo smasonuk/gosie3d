@@ -21,7 +21,7 @@ type BspNode struct {
 }
 
 const nearPlaneZ = 25
-const conversionFactor = 600 // Conversion factor for screen coordinates
+const conversionFactor = 700
 
 func NewBspNode(facePoints [][]float64, faceNormal *Vector3, faceColor color.RGBA, pointIndices []int, normalIdx int) *BspNode {
 	b := &BspNode{
@@ -37,11 +37,11 @@ func NewBspNode(facePoints [][]float64, faceNormal *Vector3, faceColor color.RGB
 	return b
 }
 
-func (b *BspNode) PaintWithoutShading(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix) {
-	b.PaintWithShading(screen, x, y, transPoints, transNormals, false)
+func (b *BspNode) PaintWithoutShading(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix, linesOnly bool) {
+	b.PaintWithShading(screen, x, y, transPoints, transNormals, false, linesOnly)
 }
 
-func (b *BspNode) PaintWithShading(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix, doShading bool) {
+func (b *BspNode) PaintWithShading(screen *ebiten.Image, x, y int, transPoints *Matrix, transNormals *Matrix, doShading bool, linesOnly bool) {
 	if len(b.facePointIndices) == 0 {
 		return
 	}
@@ -55,23 +55,23 @@ func (b *BspNode) PaintWithShading(screen *ebiten.Image, x, y int, transPoints *
 
 	if where <= 0 {
 		if b.Left != nil {
-			b.Left.PaintWithShading(screen, x, y, transPoints, transNormals, doShading)
+			b.Left.PaintWithShading(screen, x, y, transPoints, transNormals, doShading, linesOnly)
 		}
 		if b.Right != nil {
-			b.Right.PaintWithShading(screen, x, y, transPoints, transNormals, doShading)
+			b.Right.PaintWithShading(screen, x, y, transPoints, transNormals, doShading, linesOnly)
 		}
 	} else {
 		if b.Right != nil {
-			b.Right.PaintWithShading(screen, x, y, transPoints, transNormals, doShading)
+			b.Right.PaintWithShading(screen, x, y, transPoints, transNormals, doShading, linesOnly)
 		}
 
-		shouldReturn := b.paintPoly(screen, x, y, transPoints, transNormals, doShading, firstTransformedPoint, transformedNormal)
+		shouldReturn := b.paintPoly(screen, x, y, transPoints, transNormals, doShading, firstTransformedPoint, transformedNormal, linesOnly)
 		if shouldReturn {
 			return // Z-clipping occurred, no need to paint left side
 		}
 
 		if b.Left != nil {
-			b.Left.PaintWithShading(screen, x, y, transPoints, transNormals, doShading)
+			b.Left.PaintWithShading(screen, x, y, transPoints, transNormals, doShading, linesOnly)
 		}
 	}
 }
@@ -140,7 +140,9 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 	normalsInCameraSpace *Matrix,
 	shadePoly bool,
 	firstTransformedPoint []float64,
-	transformedNormal []float64) bool {
+	transformedNormal []float64,
+	linesOnly bool,
+) bool {
 
 	// are any of the points behind the camera?
 	// TODO: this make shouldn't be done every time
@@ -172,7 +174,8 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 			b.Left.PaintWithShading(screen, x, y,
 				verticesInCameraSpace,
 				normalsInCameraSpace,
-				shadePoly)
+				shadePoly,
+				linesOnly)
 		}
 		return true
 	}
@@ -196,8 +199,15 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 			polyColor)
 	}
 
-	fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
-	// drawPolygonOutline(screen, screenPointsX, screenPointsY, 1.0, polyColor)
+	if !linesOnly {
+		fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
+	} else {
+		// fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
+		black := color.RGBA{R: 0, G: 0, B: 0, A: 25}
+		// drawPolygonOutline(screen, screenPointsX, screenPointsY, 1.0, black)
+		fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
+		drawPolygonOutline(screen, screenPointsX, screenPointsY, 1.0, black)
+	}
 
 	// black := color.RGBA{R: 0, G: 0, B: 0, A: 200}
 	// fillConvexPolygon(screen, screenPointsX, screenPointsY, black)

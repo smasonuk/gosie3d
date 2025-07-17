@@ -50,7 +50,7 @@ func fillConvexPolygon(screen *ebiten.Image, xp, yp []float32, clr color.RGBA) {
 	op := &ebiten.DrawTrianglesOptions{}
 	// op.FillRule = ebiten.FillAll
 	// op.FillRule = ebiten.FillRuleEvenOdd
-	op.AntiAlias = true
+	op.AntiAlias = true //TODO: if running in browser, this should be true
 	// screen.DrawTriangles(vertices, indices, whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image), op)
 	screen.DrawTriangles(vertices, indices, whiteSub, op)
 
@@ -107,11 +107,21 @@ func drawPolygonOutline(screen *ebiten.Image, xp, yp []float32, strokeWidth floa
 
 	// Define the options for drawing the triangles.
 	drawOp := &ebiten.DrawTrianglesOptions{
-		AntiAlias: true,
+		AntiAlias: true, //TODO: if running in browser, this should be true
 	}
 
 	// white := whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image)
 
 	// Draw the triangles that form the line stroke.
 	screen.DrawTriangles(vertices, indices, whiteSub, drawOp)
+}
+
+func drawPolygonOutline2(screen *ebiten.Image, xp, yp []float32, strokeWidth float32, clr color.RGBA) {
+	for i := 0; i < len(xp)-1; i++ {
+		DrawLine(
+			screen,
+			int(xp[i]), int(yp[i]),
+			int(xp[i+1]), int(yp[i+1]),
+			clr)
+	}
 }

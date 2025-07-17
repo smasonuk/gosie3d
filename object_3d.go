@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -32,11 +33,14 @@ type Object3d struct {
 	rotMatrix          *Matrix
 	position           *Point3d
 	canPaintWithoutBSP bool
+	xLength            float64
+	yLength            float64
+	zLength            float64
 }
 
 func (o *Object3d) PaintObject(screen *ebiten.Image, x, y int, lightingChange bool) {
 	if o.root != nil {
-		o.root.PaintWithShading(screen, x, y, o.transFaceMesh.Points, o.transNormalMesh.Points, lightingChange)
+		o.root.PaintWithShading(screen, x, y, o.transFaceMesh.Points, o.transNormalMesh.Points, lightingChange, true)
 	}
 }
 
@@ -82,11 +86,56 @@ func (o *Object3d) Finished() {
 
 	log.Printf("Points: %d", len(o.faceMesh.Points.ThisMatrix))
 	log.Printf("Normals: %d", len(o.normalMesh.Points.ThisMatrix))
+
+	o.calcSize()
 }
 
-// func (o *Object3d) ApplyMatrixBatch(m *Matrix) {
-// 	o.rotMatrix = m.MultiplyBy(o.rotMatrix)
-// }
+func (o *Object3d) ZLength() float64 {
+	return o.zLength
+}
+
+func (o *Object3d) YLength() float64 {
+	return o.yLength
+}
+
+func (o *Object3d) XLength() float64 {
+	return o.xLength
+}
+
+func (o *Object3d) calcSize() {
+	if o.faceMesh == nil || len(o.faceMesh.Points.ThisMatrix) == 0 {
+		o.xLength = 0
+		o.yLength = 0
+		o.zLength = 0
+		return
+	}
+
+	minX, maxX := o.faceMesh.Points.ThisMatrix[0][0], o.faceMesh.Points.ThisMatrix[0][0]
+	minY, maxY := o.faceMesh.Points.ThisMatrix[0][1], o.faceMesh.Points.ThisMatrix[0][1]
+	minZ, maxZ := o.faceMesh.Points.ThisMatrix[0][2], o.faceMesh.Points.ThisMatrix[0][2]
+	for _, point := range o.faceMesh.Points.ThisMatrix {
+		if point[0] < minX {
+			minX = point[0]
+		} else if point[0] > maxX {
+			maxX = point[0]
+		}
+		if point[1] < minY {
+			minY = point[1]
+		} else if point[1] > maxY {
+			maxY = point[1]
+		}
+
+		if point[2] < minZ {
+			minZ = point[2]
+		} else if point[2] > maxZ {
+			maxZ = point[2]
+		}
+	}
+	o.xLength = maxX - minX
+	o.yLength = maxY - minY
+	o.zLength = maxZ - minZ
+	log.Printf("Object size: X: %.2f, Y: %.2f, Z: %.2f", o.xLength, o.yLength, o.zLength)
+}
 
 func (o *Object3d) ApplyMatrix(m *Matrix) {
 	o.rotMatrix = m.MultiplyBy(o.rotMatrix)
@@ -244,6 +293,245 @@ func NewCube() *Object3d {
 	return obj
 }
 
+// // xp and zp
+// func Extrude(xp []float64, zp []float64, height float64, clr color.RGBA) *Object3d {
+
+// 	obj := NewObject_3d(true)
+
+// 	topFace := NewFace(nil, clr, nil)
+
+// 	for i := 0; i < len(xp); i += 2 {
+// 		//these points form the base of the extruded face (a quad)
+// 		startX := xp[i]
+// 		startZ := zp[i]
+// 		endZ := zp[i+1]
+// 		endX := xp[i+1]
+
+// 		face := NewFace(nil, clr, nil)
+// 		face.AddPoint(startX, 0, startZ)
+// 		face.AddPoint(endX, 0, endZ)
+// 		face.AddPoint(endX, height, endZ)
+// 		face.AddPoint(startX, height, startZ)
+
+// 		face.Finished(FACE_REVERSE)
+// 		obj.theFaces.AddFace(face)
+
+// 		topFace.AddPoint(startX, 0, startZ)
+// 		topFace.AddPoint(endX, 0, endZ)
+
+// 	}
+
+// 	topFace.Finished(FACE_NORMAL)
+// 	obj.theFaces.AddFace(topFace)
+
+// 	obj.Finished()
+// 	return obj
+// }
+
+type Point2D struct {
+	X, Z float64
+}
+
+// Extrude creates a 3D object by extruding a 2D shape defined by a set of
+// vertices. It correctly handles vertices supplied in any order.
+func Extrude(xp []float64, zp []float64, height float64, clr color.RGBA) *Object3d {
+	// --- 1. Sanitize and Sort the 2D Points ---
+
+	// Extract unique points from the input slices to avoid duplicates.
+	pointSet := make(map[Point2D]bool)
+	for i := 0; i < len(xp); i++ {
+		pointSet[Point2D{X: xp[i], Z: zp[i]}] = true
+	}
+
+	// Create a slice from the unique points.
+	var points []Point2D
+	for p := range pointSet {
+		points = append(points, p)
+	}
+
+	// Cannot form a polygon with less than 3 points.
+	if len(points) < 3 {
+		return NewObject_3d(true) // Return an empty object
+	}
+
+	// Calculate the centroid (average point) to sort around.
+	var centerX, centerZ float64
+	for _, p := range points {
+		centerX += p.X
+		centerZ += p.Z
+	}
+	centerX /= float64(len(points))
+	centerZ /= float64(len(points))
+
+	// Sort points by the angle they make with the centroid.
+	// This arranges them into a continuous counter-clockwise (CCW) loop.
+	sort.Slice(points, func(i, j int) bool {
+		angle1 := math.Atan2(points[i].Z-centerZ, points[i].X-centerX)
+		angle2 := math.Atan2(points[j].Z-centerZ, points[j].X-centerX)
+		return angle1 < angle2
+	})
+
+	// --- 2. Build the 3D Object ---
+
+	obj := NewObject_3d(true)
+	topFace := NewFace(nil, clr, nil)
+	baseFace := NewFace(nil, clr, nil)
+
+	// Iterate through the sorted points to build all faces.
+	for i := 0; i < len(points); i++ {
+		// Get the start and end points for the current side panel.
+		p1 := points[i]
+		p2 := points[(i+1)%len(points)] // Wraps around for the last segment
+
+		// Create the side face in CCW order for an outward normal.
+		sideFace := NewFace(nil, clr, nil)
+		sideFace.AddPoint(p1.X, 0, p1.Z)      // Bottom-start
+		sideFace.AddPoint(p2.X, 0, p2.Z)      // Bottom-end
+		sideFace.AddPoint(p2.X, height, p2.Z) // Top-end
+		sideFace.AddPoint(p1.X, height, p1.Z) // Top-start
+		sideFace.Finished(FACE_NORMAL)
+		obj.theFaces.AddFace(sideFace)
+
+		// Add the current point to the top and base face polygons.
+		topFace.AddPoint(p1.X, height, p1.Z)
+		baseFace.AddPoint(p1.X, 0, p1.Z)
+	}
+
+	// Finalize the top and base cap faces.
+	topFace.Finished(FACE_NORMAL)   // CCW vertex order creates an upward (+Y) normal.
+	baseFace.Finished(FACE_REVERSE) // Must be reversed for a downward (-Y) normal.
+	obj.theFaces.AddFace(topFace)
+	obj.theFaces.AddFace(baseFace)
+
+	obj.Finished()
+	return obj
+}
+
+// func Extrude(xp []float64, zp []float64, height float64, clr color.RGBA) *Object3d {
+
+// 	obj := NewObject_3d(true)
+
+// 	topFace := NewFace(nil, clr, nil)
+// 	baseFace := NewFace(nil, clr, nil)
+
+// 	// This loop assumes the segments defined by (xp[i], zp[i]) -> (xp[i+1], zp[i+1])
+// 	// are arranged sequentially to form a closed 2D polygon.
+// 	for i := 0; i < len(xp); i += 2 {
+// 		startX := xp[i]
+// 		startZ := zp[i]
+// 		endX := xp[i+1]
+// 		endZ := zp[i+1]
+
+// 		// --- 1. Create the side face (a quad) ---
+// 		// Define vertices in counter-clockwise (CCW) order for an outward normal.
+// 		// The order is: bottom-start -> bottom-end -> top-end -> top-start.
+// 		sideFace := NewFace(nil, clr, nil)
+// 		sideFace.AddPoint(startX, 0, startZ)
+// 		sideFace.AddPoint(endX, 0, endZ)
+// 		sideFace.AddPoint(endX, height, endZ)
+// 		sideFace.AddPoint(startX, height, startZ)
+// 		sideFace.Finished(FACE_NORMAL) // Assumes this uses the CCW order correctly.
+// 		obj.theFaces.AddFace(sideFace)
+
+// 		// --- 2. Add vertices for the top and base polygons ---
+// 		// To build the cap polygons, we only need the start point of each segment.
+// 		topFace.AddPoint(startX, height, startZ)
+// 		baseFace.AddPoint(startX, 0, startZ)
+// 	}
+
+// 	// --- 3. Finalize the top and base faces ---
+// 	// The vertices for topFace were added in order, which we assume is CCW.
+// 	// This creates an upward-pointing normal (+Y).
+// 	topFace.Finished(FACE_NORMAL)
+// 	obj.theFaces.AddFace(topFace)
+
+// 	// For the baseFace to point down (-Y), its vertices must be in a
+// 	// clockwise (CW) order when viewed from above. Since we added them
+// 	// in the same order as the top face (CCW), we reverse them.
+// 	baseFace.Finished(FACE_REVERSE) // Reverses vertex order or flips the normal.
+// 	obj.theFaces.AddFace(baseFace)
+
+// 	obj.Finished()
+// 	return obj
+// }
+
+// // Extrude creates a 3D object by extruding a 2D shape along the Y-axis.
+// // It takes a slice of X and Z coordinates that define the base shape, and a height for the extrusion.
+// // The base shape is assumed to be on the Y=0 plane and defined with Counter-Clockwise (CCW) points.
+// func Extrude(xp []float64, zp []float64, height float64) *Object3d {
+// 	// --- 1. Validate Input ---
+// 	// Ensure we have the same number of x and z points, and at least 3 points to form a polygon.
+// 	if len(xp) != len(zp) || len(xp) < 3 {
+// 		// Return an empty object or nil if the input is invalid.
+// 		return NewObject_3d(true)
+// 	}
+// 	numPoints := len(xp)
+
+// 	obj := NewObject_3d(true)
+
+// 	// --- 2. Generate Vertices ---
+// 	// Create two sets of vertices: one for the base polygon (y=0) and one for the top (y=height).
+// 	bottomPoints := make([][3]float64, numPoints)
+// 	topPoints := make([][3]float64, numPoints)
+// 	for i := 0; i < numPoints; i++ {
+// 		bottomPoints[i] = [3]float64{xp[i], 0, zp[i]}
+// 		topPoints[i] = [3]float64{xp[i], height, zp[i]}
+// 	}
+
+// 	// --- 3. Create Top and Bottom Faces ---
+
+// 	// Create the top face.
+// 	// The points are added in their original CCW order. When viewed from above,
+// 	// this creates a normal pointing up (in the +Y direction).
+// 	topFace := NewFace(nil, color.RGBA{0, 255, 0, 255}, nil) // Green
+// 	for i := 0; i < numPoints; i++ {
+// 		p := topPoints[i]
+// 		topFace.AddPoint(p[0], p[1], p[2])
+// 	}
+// 	topFace.Finished(FACE_REVERSE)
+// 	obj.theFaces.AddFace(topFace)
+
+// 	// Create the bottom face.
+// 	// The points are added in reverse (Clockwise) order. When viewed from below,
+// 	// this creates a normal pointing down (in the -Y direction).
+// 	bottomFace := NewFace(nil, color.RGBA{255, 0, 0, 255}, nil) // Red
+// 	for i := numPoints - 1; i >= 0; i-- {
+// 		p := bottomPoints[i]
+// 		bottomFace.AddPoint(p[0], p[1], p[2])
+// 	}
+// 	bottomFace.Finished(FACE_REVERSE)
+// 	obj.theFaces.AddFace(bottomFace)
+
+// 	// --- 4. Create Side Faces ---
+// 	// Create a quad for each edge of the base polygon, connecting the bottom vertices to the top ones.
+// 	sideColor := color.RGBA{0, 0, 255, 255} // Blue
+// 	for i := 0; i < numPoints; i++ {
+// 		// Get indices for the current edge, wrapping around for the last one.
+// 		p0_idx := i
+// 		p1_idx := (i + 1) % numPoints
+
+// 		// Define the four corners of the side quad in CCW order to ensure the normal points outwards.
+// 		// The order is: current bottom -> next bottom -> next top -> current top
+// 		p0 := bottomPoints[p0_idx]
+// 		p1 := bottomPoints[p1_idx]
+// 		p2 := topPoints[p1_idx]
+// 		p3 := topPoints[p0_idx]
+
+// 		sideFace := NewFace(nil, sideColor, nil)
+// 		sideFace.AddPoint(p0[0], p0[1], p0[2])
+// 		sideFace.AddPoint(p1[0], p1[1], p1[2])
+// 		sideFace.AddPoint(p2[0], p2[1], p2[2])
+// 		sideFace.AddPoint(p3[0], p3[1], p3[2])
+
+// 		sideFace.Finished(FACE_REVERSE)
+// 		obj.theFaces.AddFace(sideFace)
+// 	}
+
+// 	// --- 5. Finalize and Return ---
+// 	obj.Finished()
+// 	return obj
+// }
+
 // NewRectangle creates a new Object_3d in the shape of a cuboid (a 3D rectangle).
 // It's centered at the origin and has the specified dimensions and color.
 func NewRectangle(width, height, length float64, clr color.RGBA) *Object3d {
@@ -384,6 +672,71 @@ func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdi
 
 	// Top face (+Y direction)
 	generateFace([3]float64{-w2, h2, -l2}, [3]float64{width, 0, 0}, [3]float64{0, 0, length})
+
+	// Finalize the object by building its BSP tree.
+	obj.Finished()
+	return obj
+}
+
+func NewSubdividedPlane(xWidth, yLength float64, clr color.RGBA, subdivisions int) *Object3d {
+	obj := NewObject_3d(true)
+	w2, l2 := xWidth/2.0, yLength/2.0
+
+	if subdivisions < 1 {
+		subdivisions = 1 // Ensure at least one subdivision.
+	}
+
+	// generateFace is a helper function that constructs one of the six faces of the cuboid.
+	// It takes an origin point and two vectors (u, v) that define the plane and dimensions
+	// of the face. It then creates a grid of vertices and generates triangles.
+	generateFace := func(origin, u, v [3]float64) {
+		// Create a grid of vertices for the current face.
+		vertices := make([][][3]float64, subdivisions+1)
+		for i := range vertices {
+			vertices[i] = make([][3]float64, subdivisions+1)
+			for j := range vertices[i] {
+				// Calculate the position of vertex (i, j) on the grid plane.
+				ui := float64(i) / float64(subdivisions)
+				vj := float64(j) / float64(subdivisions)
+				vertices[i][j] = [3]float64{
+					origin[0] + ui*u[0] + vj*v[0],
+					origin[1] + ui*u[1] + vj*v[1],
+					origin[2] + ui*u[2] + vj*v[2],
+				}
+			}
+		}
+
+		// Create two triangles for each quad in the subdivision grid.
+		for i := 0; i < subdivisions; i++ {
+			for j := 0; j < subdivisions; j++ {
+				// Get the four corner vertices of the current quad.
+				p1 := vertices[i][j]
+				p2 := vertices[i+1][j]
+				p3 := vertices[i+1][j+1]
+				p4 := vertices[i][j+1]
+
+				// Create the first triangle for the quad (p1, p2, p3).
+				face1 := NewFace(nil, clr, nil)
+				face1.AddPoint(p1[0], p1[1], p1[2])
+				face1.AddPoint(p2[0], p2[1], p2[2])
+				face1.AddPoint(p3[0], p3[1], p3[2])
+				// The vertices are wound counter-clockwise to produce an outward-facing normal.
+				face1.Finished(FACE_REVERSE)
+				obj.theFaces.AddFace(face1)
+
+				// Create the second triangle for the quad (p1, p3, p4).
+				face2 := NewFace(nil, clr, nil)
+				face2.AddPoint(p1[0], p1[1], p1[2])
+				face2.AddPoint(p3[0], p3[1], p3[2])
+				face2.AddPoint(p4[0], p4[1], p4[2])
+				face2.Finished(FACE_REVERSE)
+				obj.theFaces.AddFace(face2)
+			}
+		}
+	}
+
+	// Top face (+Y direction)
+	generateFace([3]float64{-w2, 0, -l2}, [3]float64{xWidth, 0, 0}, [3]float64{0, 0, yLength})
 
 	// Finalize the object by building its BSP tree.
 	obj.Finished()

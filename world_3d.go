@@ -79,8 +79,18 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 	})
 
 	// // Draw objects that should be drawn first
-	for _, obj := range w.objectToDrawFirst {
-		obj.ApplyMatrixTemp(cam.camMatrixRev)
+	for i, obj := range w.objectToDrawFirst {
+		// obj.ApplyMatrixTemp(cam.camMatrixRev)
+		// obj.PaintObject(screen, xsize/2, ysize/2, true)
+
+		objToWorld := TransMatrix(
+			w.objectToDrawFirstXpos[i],
+			w.objectToDrawFirstYpos[i],
+			w.objectToDrawFirstZpos[i],
+		)
+
+		objToCam := cam.camMatrixRev.MultiplyBy(objToWorld)
+		obj.ApplyMatrixTemp(objToCam)
 		obj.PaintObject(screen, xsize/2, ysize/2, true)
 	}
 
