@@ -2,6 +2,11 @@ package gosie3d
 
 import "math"
 
+type Vector2 struct {
+	X float64
+	Y float64
+}
+
 type Vector3 struct {
 	X float64
 	Y float64

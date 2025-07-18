@@ -54,6 +54,47 @@ func (w *World_3d) AddCamera(c *Camera, x, y, z float64) {
 	w.currentCamera = len(w.cameras) - 1
 }
 
+func paint(screen *ebiten.Image, xsize, ysize int, obj *Object3d, x, y, z float64, cam *Camera) {
+
+	objToWorld := TransMatrix(
+		x, y, z,
+	)
+
+	objToCam := cam.camMatrixRev.MultiplyBy(objToWorld)
+	obj.ApplyMatrixTemp(objToCam)
+	obj.PaintObject(screen, xsize/2, ysize/2, true)
+}
+
+func distBetweenObjectAndCamera(obj *Object3d, cam *Camera) float64 {
+	objX, objY, objZ := obj.GetPosition().X, obj.GetPosition().Y, obj.GetPosition().Z
+	camX, camY, camZ := cam.GetPosition().X, cam.GetPosition().Y, cam.GetPosition().Z
+
+	return math.Sqrt(math.Pow(objX-camX, 2) + math.Pow(objY-camY, 2) + math.Pow(objZ-camZ, 2))
+}
+
+func draw(screen *ebiten.Image, xsize, ysize int, objects []*Object3d, cam *Camera) {
+	// draw background objects
+	for _, obj := range objects {
+		objToWorld := TransMatrix(
+			obj.GetPosition().X,
+			obj.GetPosition().Y,
+			obj.GetPosition().Z,
+		)
+		objToCam := cam.camMatrixRev.MultiplyBy(objToWorld)
+		obj.ApplyMatrixTemp(objToCam)
+		obj.PaintObject(screen, xsize/2, ysize/2, true)
+	}
+
+}
+
+func sortObjects(backgroundObjects []*Object3d, cam *Camera) {
+	sort.Slice(backgroundObjects, func(i, j int) bool {
+		distanceI := distBetweenObjectAndCamera(backgroundObjects[i], cam)
+		distanceJ := distBetweenObjectAndCamera(backgroundObjects[j], cam)
+		return distanceI > distanceJ
+	})
+}
+
 func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 	if w.currentCamera == -1 || len(w.cameras) == 0 {
 		return
@@ -66,7 +107,7 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 	for i := range w.objects {
 		sortedIndices = append(sortedIndices, i)
 	}
-	sort.Slice(sortedIndices, func(i, j int) bool {
+	sortFunc := func(i, j int) bool {
 		distanceI := math.Sqrt(math.Pow(w.objXpos[sortedIndices[i]]-camX, 2) +
 			math.Pow(w.objYpos[sortedIndices[i]]-camY, 2) +
 			math.Pow(w.objZpos[sortedIndices[i]]-camZ, 2))
@@ -76,23 +117,56 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 			math.Pow(w.objZpos[sortedIndices[j]]-camZ, 2))
 
 		return distanceI > distanceJ
-	})
-
-	// // Draw objects that should be drawn first
-	for i, obj := range w.objectToDrawFirst {
-		// obj.ApplyMatrixTemp(cam.camMatrixRev)
-		// obj.PaintObject(screen, xsize/2, ysize/2, true)
-
-		objToWorld := TransMatrix(
-			w.objectToDrawFirstXpos[i],
-			w.objectToDrawFirstYpos[i],
-			w.objectToDrawFirstZpos[i],
-		)
-
-		objToCam := cam.camMatrixRev.MultiplyBy(objToWorld)
-		obj.ApplyMatrixTemp(objToCam)
-		obj.PaintObject(screen, xsize/2, ysize/2, true)
 	}
+	sort.Slice(sortedIndices, sortFunc)
+
+	// // Draw objects that should be drawn first (that dont have a direction vector)
+	for i, obj := range w.objectToDrawFirst {
+		if obj.objectDirection != nil {
+			continue
+		}
+
+		paint(screen, xsize, ysize, obj, w.objectToDrawFirstXpos[i], w.objectToDrawFirstYpos[i], w.objectToDrawFirstZpos[i], cam)
+	}
+
+	// draw objects whose direction vector is pointing to the camera
+	backgroundObjects := make([]*Object3d, 0)
+	foregroundObjects := make([]*Object3d, 0)
+	for i, obj := range w.objectToDrawFirst {
+		if obj.objectDirection == nil {
+			continue
+		}
+
+		objToWorld := TransMatrix(w.objectToDrawFirstXpos[i], w.objectToDrawFirstYpos[i], w.objectToDrawFirstZpos[i])
+		objToCam := cam.camMatrixRev.MultiplyBy(objToWorld)
+
+		// Transform the direction vector (the direction the cusion is pointing) to camera space
+		vecMatrix := NewMatrix()
+		vecMatrix.AddRow([]float64{obj.objectDirection.X, obj.objectDirection.Y, obj.objectDirection.Z, 1.0})
+		destMatrix := IdentMatrix()
+		objToCam.TransformNormals(vecMatrix, destMatrix)
+		direction := NewVector3(destMatrix.ThisMatrix[0][0], destMatrix.ThisMatrix[0][1], destMatrix.ThisMatrix[0][2])
+		direction.Normalize()
+
+		obj.ApplyMatrixTemp(objToCam)
+		pointX := obj.transFaceMesh.Points.ThisMatrix[0][0]
+		pointY := obj.transFaceMesh.Points.ThisMatrix[0][1]
+		pointZ := obj.transFaceMesh.Points.ThisMatrix[0][2]
+
+		plane := NewPlaneFromPoint(NewPoint3d(pointX, pointY, pointZ), direction)
+		where := plane.PointOnPlane(0, 0, 0)
+
+		if where > 0 {
+			// obj.PaintObject(screen, xsize/2, ysize/2, true)
+			backgroundObjects = append(backgroundObjects, obj)
+		} else {
+			foregroundObjects = append(foregroundObjects, obj)
+		}
+	}
+
+	// sort background objects by distance to camera and draw them
+	sortObjects(backgroundObjects, cam)
+	draw(screen, xsize, ysize, backgroundObjects, cam)
 
 	for _, i := range sortedIndices {
 		obj := w.objects[i]
@@ -111,4 +185,8 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 		obj.ApplyMatrixTemp(objToCam)
 		obj.PaintObject(screen, xsize/2, ysize/2, true)
 	}
+
+	// draw foreground objects
+	sortObjects(foregroundObjects, cam)
+	draw(screen, xsize, ysize, foregroundObjects, cam)
 }
