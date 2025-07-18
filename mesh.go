@@ -9,6 +9,7 @@ func NewMesh() *Mesh {
 }
 
 func (m *Mesh) AddPoint(point []float64) ([]float64, int) {
+	// Check if the point already exists in the mesh and return it if found
 	for i, p := range m.Points.ThisMatrix {
 		if p[0] == point[0] && p[1] == point[1] && p[2] == point[2] {
 			return p, i

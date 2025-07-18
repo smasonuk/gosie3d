@@ -18,10 +18,13 @@ type BspNode struct {
 	xp               []float32
 	yp               []float32
 	normalIndex      int
+	pointsToUse      [][]float64 //temp buffer
 }
 
 const nearPlaneZ = 25
 const conversionFactor = 700
+const antiAlias = false
+const antiAliasLines = false
 
 func NewBspNode(facePoints [][]float64, faceNormal *Vector3, faceColor color.RGBA, pointIndices []int, normalIdx int) *BspNode {
 	b := &BspNode{
@@ -33,6 +36,7 @@ func NewBspNode(facePoints [][]float64, faceNormal *Vector3, faceColor color.RGB
 		normalIndex:      normalIdx,
 		xp:               make([]float32, len(facePoints)),
 		yp:               make([]float32, len(facePoints)),
+		pointsToUse:      make([][]float64, 0, len(facePoints)*2),
 	}
 	return b
 }
@@ -146,7 +150,9 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 
 	// are any of the points behind the camera?
 	// TODO: this make shouldn't be done every time
-	pointsToUse := make([][]float64, 0, len(b.facePointIndices))
+	// pointsToUse := make([][]float64, 0, len(b.facePointIndices))
+	pointsToUse := b.pointsToUse[:0] // Reuse the slice to avoid allocation
+
 	numPointsBehind := 0
 	for _, pointIndex := range b.facePointIndices {
 		pnt := verticesInCameraSpace.ThisMatrix[pointIndex]
@@ -202,11 +208,13 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 	if !linesOnly {
 		fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
 	} else {
-		// fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
-		black := color.RGBA{R: 0, G: 0, B: 0, A: 25}
-		// drawPolygonOutline(screen, screenPointsX, screenPointsY, 1.0, black)
+		//fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
+		black := color.RGBA{R: 0, G: 0, B: 0, A: 20}
+
 		fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
 		drawPolygonOutline(screen, screenPointsX, screenPointsY, 1.0, black)
+
+		// drawPolygonOutline(screen, screenPointsX, screenPointsY, 1.0, polyColor)
 	}
 
 	// black := color.RGBA{R: 0, G: 0, B: 0, A: 200}
