@@ -129,7 +129,7 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 		paint(screen, xsize, ysize, obj, w.objectToDrawFirstXpos[i], w.objectToDrawFirstYpos[i], w.objectToDrawFirstZpos[i], cam)
 	}
 
-	// draw objects whose direction vector is pointing to the camera
+	// get objects which are poing at and from the camera. objects pointing towards the camera are drawn first
 	backgroundObjects := make([]*Object3d, 0)
 	foregroundObjects := make([]*Object3d, 0)
 	for i, obj := range w.objectToDrawFirst {
@@ -157,7 +157,6 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 		where := plane.PointOnPlane(0, 0, 0)
 
 		if where > 0 {
-			// obj.PaintObject(screen, xsize/2, ysize/2, true)
 			backgroundObjects = append(backgroundObjects, obj)
 		} else {
 			foregroundObjects = append(foregroundObjects, obj)

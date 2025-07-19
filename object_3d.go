@@ -49,7 +49,18 @@ func (o *Object3d) SetDirectionVector(v *Vector3) {
 	o.objectDirection.Normalize()
 
 	fmt.Println("Object direction vector set to:", o.objectDirection)
+}
 
+func (o *Object3d) TranslateAllPoints(x, y, z float64) {
+	if o.faceMesh == nil || o.faceMesh.Points == nil {
+		return
+	}
+
+	for i := range o.faceMesh.Points.ThisMatrix {
+		o.faceMesh.Points.ThisMatrix[i][0] += x
+		o.faceMesh.Points.ThisMatrix[i][1] += y
+		o.faceMesh.Points.ThisMatrix[i][2] += z
+	}
 }
 
 // apply matrix to the direction vector to transform it.
@@ -453,6 +464,10 @@ func (o *Object3d) RollObject(directionOfRoll float64, amountOfMovement float64)
 	o.rotMatrix = ApplyRollObjectMatrix(directionOfRoll, amountOfMovement, o.rotMatrix)
 }
 
+func (o *Object3d) RotateY(amountOfMovementInRads float64) {
+	o.rotMatrix = ApplyRotateYObjectMatrix(amountOfMovementInRads, o.rotMatrix)
+}
+
 func ApplyRollObjectMatrix(directionOfRoll float64, amountOfMovement float64, existingMatrix *Matrix) *Matrix {
 	rotMatrixY := NewRotationMatrix(ROTY, -directionOfRoll)
 	rotMatrixYBack := NewRotationMatrix(ROTY, directionOfRoll)
@@ -460,6 +475,11 @@ func ApplyRollObjectMatrix(directionOfRoll float64, amountOfMovement float64, ex
 	all := rotMatrixY.MultiplyBy(rotMatrixX).MultiplyBy(rotMatrixYBack)
 
 	return all.MultiplyBy(existingMatrix)
+}
+
+func ApplyRotateYObjectMatrix(amountOfMovementInRads float64, existingMatrix *Matrix) *Matrix {
+	rotMatrix := NewRotationMatrix(ROTY, amountOfMovementInRads)
+	return rotMatrix.MultiplyBy(existingMatrix)
 }
 
 func (o *Object3d) PaintObjectWithBackfaceCullingOnly() {
