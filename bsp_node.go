@@ -24,7 +24,7 @@ type BspNode struct {
 const nearPlaneZ = 25
 const conversionFactor = 700
 const antiAlias = true
-const antiAliasLines = false
+const antiAliasLines = true
 
 func NewBspNode(facePoints [][]float64, faceNormal *Vector3, faceColor color.RGBA, pointIndices []int, normalIdx int) *BspNode {
 	b := &BspNode{
@@ -208,11 +208,11 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 	if !linesOnly {
 		fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
 	} else {
-		fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
-		// black := color.RGBA{R: 0, G: 0, B: 0, A: 20}
-
 		// fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
-		// drawPolygonOutline(screen, screenPointsX, screenPointsY, 1.0, black)
+		black := color.RGBA{R: 100, G: 100, B: 100, A: 20}
+
+		fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
+		drawPolygonOutline(screen, screenPointsX, screenPointsY, 1.0, black)
 
 		// drawPolygonOutline(screen, screenPointsX, screenPointsY, 1.0, polyColor)
 	}
