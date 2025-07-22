@@ -14,6 +14,7 @@ type BspNode struct {
 	colRed           uint8
 	colGreen         uint8
 	colBlue          uint8
+	colAlpha         uint8
 	facePointIndices []int
 	xp               []float32
 	yp               []float32
@@ -32,6 +33,7 @@ func NewBspNode(facePoints [][]float64, faceNormal *Vector3, faceColor color.RGB
 		colRed:           faceColor.R,
 		colGreen:         faceColor.G,
 		colBlue:          faceColor.B,
+		colAlpha:         faceColor.A,
 		facePointIndices: pointIndices,
 		normalIndex:      normalIdx,
 		xp:               make([]float32, len(facePoints)),
@@ -81,7 +83,7 @@ func (b *BspNode) PaintWithShading(screen *ebiten.Image, x, y int, transPoints *
 }
 
 func (b *BspNode) createFaceFromVertices(verticesInCameraSpace *Matrix) *Face {
-	f := NewFaceEmpty(color.RGBA{R: b.colRed, G: b.colGreen, B: b.colBlue, A: 255}, b.normal)
+	f := NewFaceEmpty(color.RGBA{R: b.colRed, G: b.colGreen, B: b.colBlue, A: b.colAlpha}, b.normal)
 	for _, pointIndex := range b.facePointIndices {
 		pnt := verticesInCameraSpace.ThisMatrix[pointIndex]
 		x := pnt[0]
@@ -194,7 +196,7 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 		screenPointsY[i] = float32((conversionFactor*points[1])/points[2]) + float32(y)
 	}
 
-	polyColor := color.RGBA{R: uint8(b.colRed), G: uint8(b.colGreen), B: uint8(b.colBlue), A: 255}
+	polyColor := color.RGBA{R: uint8(b.colRed), G: uint8(b.colGreen), B: uint8(b.colBlue), A: b.colAlpha}
 
 	if shadePoly {
 		polyColor = b.GetColor(
@@ -209,7 +211,7 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 		fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
 	} else {
 		// fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
-		black := color.RGBA{R: 100, G: 100, B: 100, A: 20}
+		black := color.RGBA{R: 100, G: 100, B: 100, A: 50}
 
 		fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
 		drawPolygonOutline(screen, screenPointsX, screenPointsY, 1.0, black)
@@ -285,7 +287,7 @@ func (b *BspNode) GetColor(
 	r1 := clamp(int(b.colRed)-c, min, 255)
 	g1 := clamp(int(b.colGreen)-c, min, 255)
 	b1 := clamp(int(b.colBlue)-c, min, 255)
-	polyColor = color.RGBA{R: uint8(r1), G: uint8(g1), B: uint8(b1), A: 255}
+	polyColor = color.RGBA{R: uint8(r1), G: uint8(g1), B: uint8(b1), A: polyColor.A}
 
 	return polyColor
 }
