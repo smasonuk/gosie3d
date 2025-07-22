@@ -589,3 +589,81 @@ func NewUVSphere2(radius float64, sectors, stacks int, bodyClr, stripeClr color.
 	obj.Finished(false)
 	return obj
 }
+
+// NewCylinder creates a new Object3d in the shape of a cylinder.
+// The cylinder is centered at the origin, and its height extends along the Y-axis.
+// 'segments' controls how many rectangular faces are used to approximate the curved surface;
+// a higher number results in a smoother cylinder.
+func NewCylinder(radius, height float64, segments int, clr color.RGBA) *Object3d {
+	// A cylinder must have at least 3 segments to form a valid polygonal base.
+	if segments < 3 {
+		return NewObject_3d(true) // Return an empty object if segments are insufficient.
+	}
+
+	obj := NewObject_3d(true)
+	topFace := NewFace(nil, clr, nil)
+	baseFace := NewFace(nil, clr, nil)
+
+	// --- 1. Generate Vertices and Build Cap Faces ---
+
+	// Create slices to hold the ordered vertices for the top and bottom caps.
+	topVertices := make([][3]float64, segments)
+	baseVertices := make([][3]float64, segments)
+
+	// Calculate the vertex positions for one full circle.
+	for i := 0; i < segments; i++ {
+		angle := (2.0 * math.Pi / float64(segments)) * float64(i)
+		x := radius * math.Cos(angle)
+		z := radius * math.Sin(angle)
+
+		// Store vertices for later use when building the side walls.
+		topVertices[i] = [3]float64{x, height, z}
+		baseVertices[i] = [3]float64{x, 0, z}
+
+		// Add the calculated vertex to the top face polygon.
+		// The points are added in counter-clockwise (CCW) order, which will
+		// result in a normal vector pointing up (+Y) after finalization.
+		topFace.AddPoint(x, height, z)
+	}
+
+	// For the base face, vertices must be in clockwise (CW) order to produce a
+	// downward (-Y) normal. We achieve this by adding the pre-calculated
+	// base vertices to the face in reverse order.
+	for i := segments - 1; i >= 0; i-- {
+		v := baseVertices[i]
+		baseFace.AddPoint(v[0], v[1], v[2])
+	}
+
+	// Finalize the cap faces and add them to the object.
+	topFace.Finished(FACE_NORMAL)
+	obj.theFaces.AddFace(topFace)
+
+	baseFace.Finished(FACE_NORMAL)
+	obj.theFaces.AddFace(baseFace)
+
+	// --- 2. Build the Side Wall Faces ---
+
+	// Create a quad for each segment connecting the top and bottom caps.
+	for i := 0; i < segments; i++ {
+		// Get the four corners of the quad. The modulo operator (%) ensures
+		// that the last vertex connects back to the first one.
+		p1_base := baseVertices[i]
+		p2_base := baseVertices[(i+1)%segments]
+		p1_top := topVertices[i]
+		p2_top := topVertices[(i+1)%segments]
+
+		// Create the side face with vertices in CCW order for an outward normal.
+		sideFace := NewFace(nil, clr, nil)
+		sideFace.AddPoint(p1_base[0], p1_base[1], p1_base[2]) // Bottom-start
+		sideFace.AddPoint(p2_base[0], p2_base[1], p2_base[2]) // Bottom-end
+		sideFace.AddPoint(p2_top[0], p2_top[1], p2_top[2])    // Top-end
+		sideFace.AddPoint(p1_top[0], p1_top[1], p1_top[2])    // Top-start
+
+		sideFace.Finished(FACE_NORMAL)
+		obj.theFaces.AddFace(sideFace)
+	}
+
+	obj.Finished(true)
+	obj.CentreObject()
+	return obj
+}

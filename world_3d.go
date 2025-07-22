@@ -23,6 +23,11 @@ type World_3d struct {
 	objectToDrawFirstXpos []float64
 	objectToDrawFirstYpos []float64
 	objectToDrawFirstZpos []float64
+	// draw last
+	objectToDrawLast     []*Object3d
+	objectToDrawLastXpos []float64
+	objectToDrawLastYpos []float64
+	objectToDrawLastZpos []float64
 }
 
 func NewWorld_3d() *World_3d {
@@ -46,6 +51,14 @@ func (w *World_3d) AddObjectDrawFirst(obj *Object3d, x, y, z float64) {
 	w.objectToDrawFirstZpos = append(w.objectToDrawFirstZpos, z)
 }
 
+// AddObjectDrawLast
+func (w *World_3d) AddObjectDrawLast(obj *Object3d, x, y, z float64) {
+	w.objectToDrawLast = append(w.objectToDrawLast, obj)
+	w.objectToDrawLastXpos = append(w.objectToDrawLastXpos, x)
+	w.objectToDrawLastYpos = append(w.objectToDrawLastYpos, y)
+	w.objectToDrawLastZpos = append(w.objectToDrawLastZpos, z)
+}
+
 func (w *World_3d) AddCamera(c *Camera, x, y, z float64) {
 	w.cameras = append(w.cameras, c)
 	w.camXpos = append(w.camXpos, x)
@@ -56,9 +69,7 @@ func (w *World_3d) AddCamera(c *Camera, x, y, z float64) {
 
 func paint(screen *ebiten.Image, xsize, ysize int, obj *Object3d, x, y, z float64, cam *Camera) {
 
-	objToWorld := TransMatrix(
-		x, y, z,
-	)
+	objToWorld := TransMatrix(x, y, z)
 
 	objToCam := cam.camMatrixRev.MultiplyBy(objToWorld)
 	obj.ApplyMatrixTemp(objToCam)
@@ -188,4 +199,10 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 	// draw foreground objects
 	sortObjects(foregroundObjects, cam)
 	draw(screen, xsize, ysize, foregroundObjects, cam)
+
+	// Draw objects that should be drawn last
+	for i, obj := range w.objectToDrawLast {
+
+		paint(screen, xsize, ysize, obj, w.objectToDrawLastXpos[i], w.objectToDrawLastYpos[i], w.objectToDrawLastZpos[i], cam)
+	}
 }

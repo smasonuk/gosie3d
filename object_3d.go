@@ -150,7 +150,7 @@ func (o *Object3d) Finished(centerObject bool) {
 	log.Printf("Points: %d", len(o.faceMesh.Points.ThisMatrix))
 	log.Printf("Normals: %d", len(o.normalMesh.Points.ThisMatrix))
 
-	o.calcSize()
+	o.CalcSize()
 }
 
 // Moves all points so that the 0,0,0 is the center of the object.
@@ -195,19 +195,23 @@ func (o *Object3d) CentreObject() {
 	}
 }
 
-func (o *Object3d) ZLength() float64 {
-	return o.zLength
-}
-
-func (o *Object3d) YLength() float64 {
-	return o.yLength
+func (o *Object3d) GetExtents() (float64, float64, float64) {
+	return o.xLength, o.yLength, o.zLength
 }
 
 func (o *Object3d) XLength() float64 {
 	return o.xLength
 }
 
-func (o *Object3d) calcSize() {
+func (o *Object3d) YLength() float64 {
+	return o.yLength
+}
+
+func (o *Object3d) ZLength() float64 {
+	return o.zLength
+}
+
+func (o *Object3d) CalcSize() {
 	if o.faceMesh == nil || len(o.faceMesh.Points.ThisMatrix) == 0 {
 		o.xLength = 0
 		o.yLength = 0
