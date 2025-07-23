@@ -211,7 +211,7 @@ func (b *BspNode) paintPoly(screen *ebiten.Image,
 		fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
 	} else {
 		// fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
-		black := color.RGBA{R: 100, G: 100, B: 100, A: 50}
+		black := color.RGBA{R: 100, G: 100, B: 100, A: 25}
 
 		fillConvexPolygon(screen, screenPointsX, screenPointsY, polyColor)
 		drawPolygonOutline(screen, screenPointsX, screenPointsY, 1.0, black)
