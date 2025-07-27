@@ -28,11 +28,13 @@ type World_3d struct {
 	objectToDrawLastXpos []float64
 	objectToDrawLastYpos []float64
 	objectToDrawLastZpos []float64
+	batcher              *PolygonBatcher
 }
 
 func NewWorld_3d() *World_3d {
 	return &World_3d{
 		currentCamera: -1,
+		batcher:       NewPolygonBatcher(5000),
 	}
 }
 
@@ -67,13 +69,12 @@ func (w *World_3d) AddCamera(c *Camera, x, y, z float64) {
 	w.currentCamera = len(w.cameras) - 1
 }
 
-func paint(screen *ebiten.Image, xsize, ysize int, obj *Object3d, x, y, z float64, cam *Camera) {
-
+func paint(batcher *PolygonBatcher, xsize, ysize int, obj *Object3d, x, y, z float64, cam *Camera) {
 	objToWorld := TransMatrix(x, y, z)
 
 	objToCam := cam.camMatrixRev.MultiplyBy(objToWorld)
 	obj.ApplyMatrixTemp(objToCam)
-	obj.PaintObject(screen, xsize/2, ysize/2, true)
+	obj.PaintObject(batcher, xsize/2, ysize/2, true, float32(xsize), float32(ysize))
 }
 
 func distBetweenObjectAndCamera(obj *Object3d, cam *Camera) float64 {
@@ -83,7 +84,7 @@ func distBetweenObjectAndCamera(obj *Object3d, cam *Camera) float64 {
 	return math.Sqrt(math.Pow(objX-camX, 2) + math.Pow(objY-camY, 2) + math.Pow(objZ-camZ, 2))
 }
 
-func draw(screen *ebiten.Image, xsize, ysize int, objects []*Object3d, cam *Camera) {
+func draw(batcher *PolygonBatcher, xsize, ysize int, objects []*Object3d, cam *Camera) {
 	// draw background objects
 	for _, obj := range objects {
 		objToWorld := TransMatrix(
@@ -93,7 +94,7 @@ func draw(screen *ebiten.Image, xsize, ysize int, objects []*Object3d, cam *Came
 		)
 		objToCam := cam.camMatrixRev.MultiplyBy(objToWorld)
 		obj.ApplyMatrixTemp(objToCam)
-		obj.PaintObject(screen, xsize/2, ysize/2, true)
+		obj.PaintObject(batcher, xsize/2, ysize/2, true, float32(xsize), float32(ysize))
 	}
 
 }
@@ -107,6 +108,7 @@ func sortObjects(backgroundObjects []*Object3d, cam *Camera) {
 }
 
 func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
+
 	if w.currentCamera == -1 || len(w.cameras) == 0 {
 		return
 	}
@@ -137,7 +139,7 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 			continue
 		}
 
-		paint(screen, xsize, ysize, obj, w.objectToDrawFirstXpos[i], w.objectToDrawFirstYpos[i], w.objectToDrawFirstZpos[i], cam)
+		paint(w.batcher, xsize, ysize, obj, w.objectToDrawFirstXpos[i], w.objectToDrawFirstYpos[i], w.objectToDrawFirstZpos[i], cam)
 	}
 
 	// get objects which are poing at and from the camera. objects pointing towards the camera are drawn first
@@ -176,7 +178,7 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 
 	// sort background objects by distance to camera and draw them
 	sortObjects(backgroundObjects, cam)
-	draw(screen, xsize, ysize, backgroundObjects, cam)
+	draw(w.batcher, xsize, ysize, backgroundObjects, cam)
 
 	for _, i := range sortedIndices {
 		obj := w.objects[i]
@@ -193,16 +195,18 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 
 		// then, world space to camera space
 		obj.ApplyMatrixTemp(objToCam)
-		obj.PaintObject(screen, xsize/2, ysize/2, true)
+		obj.PaintObject(w.batcher, xsize/2, ysize/2, true, float32(xsize), float32(ysize))
 	}
 
 	// draw foreground objects
 	sortObjects(foregroundObjects, cam)
-	draw(screen, xsize, ysize, foregroundObjects, cam)
+	draw(w.batcher, xsize, ysize, foregroundObjects, cam)
 
 	// Draw objects that should be drawn last
 	for i, obj := range w.objectToDrawLast {
 
-		paint(screen, xsize, ysize, obj, w.objectToDrawLastXpos[i], w.objectToDrawLastYpos[i], w.objectToDrawLastZpos[i], cam)
+		paint(w.batcher, xsize, ysize, obj, w.objectToDrawLastXpos[i], w.objectToDrawLastYpos[i], w.objectToDrawLastZpos[i], cam)
 	}
+
+	w.batcher.Draw(screen, whiteImage)
 }

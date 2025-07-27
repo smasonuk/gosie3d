@@ -25,6 +25,28 @@ func NewFaceEmpty(col color.RGBA, normal *Vector3) *Face {
 	}
 }
 
+// copy
+func (f *Face) Copy() *Face {
+	newFace := &Face{
+		Points:  make([][]float64, len(f.Points)),
+		Col:     f.Col,
+		normal:  f.GetNormal().Copy(),
+		plane:   f.plane,
+		vecPnts: make([][]float64, len(f.vecPnts)),
+		meRev:   f.meRev,
+		Cnum:    f.Cnum,
+	}
+	for i, p := range f.Points {
+		newFace.Points[i] = make([]float64, len(p))
+		copy(newFace.Points[i], p)
+	}
+	for i, p := range f.vecPnts {
+		newFace.vecPnts[i] = make([]float64, len(p))
+		copy(newFace.vecPnts[i], p)
+	}
+	return newFace
+}
+
 func NewFace(pnts [][]float64, col color.RGBA, normal *Vector3) *Face {
 	f := &Face{
 		Points: pnts,

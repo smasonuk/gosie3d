@@ -8,6 +8,11 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
+var polygonBuffer struct {
+	vertices []ebiten.Vertex
+	indices  []uint16
+}
+
 var (
 	whiteImage = ebiten.NewImage(3, 3)
 	whiteSub   *ebiten.Image
@@ -18,110 +23,175 @@ func init() {
 	whiteSub = whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image)
 }
 
-func fillConvexPolygon(screen *ebiten.Image, xp, yp []float32, clr color.RGBA) {
+type PolygonBatcher struct {
+	vertices []ebiten.Vertex
+	indices  []uint16
+}
+
+func NewPolygonBatcher(initialCap int) *PolygonBatcher {
+	return &PolygonBatcher{
+		vertices: make([]ebiten.Vertex, 0, initialCap*4), // Guessing 4 vertices per polygon on avg
+		indices:  make([]uint16, 0, initialCap*6),        // Guessing 6 indices per polygon on avg
+	}
+}
+
+// AddPolygon adds a single polygon's geometry to the batch.
+func (b *PolygonBatcher) AddPolygon(xp, yp []float32, clr color.RGBA) {
 	if len(xp) < 3 {
 		return
 	}
 
-	indices := make([]uint16, 0, (len(xp)-2)*3)
-	for i := 2; i < len(xp); i++ {
-		indices = append(indices, 0, uint16(i-1), uint16(i))
-	}
+	// This offset is crucial! It's the starting index for the new vertices.
+	vertexOffset := uint16(len(b.vertices))
 
-	vertices := make([]ebiten.Vertex, len(xp))
-	cr := float32(clr.R) / 255.0
-	cg := float32(clr.G) / 255.0
-	cb := float32(clr.B) / 255.0
-	ca := float32(clr.A) / 255.0
+	cr := float32(clr.R) / 255
+	cg := float32(clr.G) / 255
+	cb := float32(clr.B) / 255
+	ca := float32(clr.A) / 255
 
+	// Add the new vertices to the main slice
 	for i := range xp {
-		vertices[i] = ebiten.Vertex{
+		v := ebiten.Vertex{
 			DstX:   xp[i],
 			DstY:   yp[i],
-			SrcX:   1,
+			SrcX:   1, // From your white texture
 			SrcY:   1,
 			ColorR: cr,
 			ColorG: cg,
 			ColorB: cb,
 			ColorA: ca,
 		}
+		b.vertices = append(b.vertices, v)
 	}
 
-	op := &ebiten.DrawTrianglesOptions{}
-	// op.FillRule = ebiten.FillAll
-	// op.FillRule = ebiten.FillRuleEvenOdd
-	op.AntiAlias = antiAlias //TODO: if running in browser, this should be true
-	// screen.DrawTriangles(vertices, indices, whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image), op)
-	screen.DrawTriangles(vertices, indices, whiteSub, op)
-
+	// Add the new indices, making sure to apply the vertexOffset
+	for i := 2; i < len(xp); i++ {
+		b.indices = append(b.indices,
+			vertexOffset,             // First vertex of this polygon
+			vertexOffset+uint16(i-1), // Previous vertex
+			vertexOffset+uint16(i),   // Current vertex
+		)
+	}
 }
 
-// drawPolygonOutline draws the outline of a polygon defined by the given points.
-// It uses the vector package to create a path and stroke it.
-func drawPolygonOutline(screen *ebiten.Image, xp, yp []float32, strokeWidth float32, clr color.RGBA) {
-	// We need at least 2 points to draw a line.
+// Draw sends the entire batch of polygons to the GPU in a single draw call.
+func (b *PolygonBatcher) Draw(screen *ebiten.Image, whiteSub *ebiten.Image) {
+	// Don't do anything if there's no geometry to draw.
+	if len(b.vertices) == 0 {
+		return
+	}
+
+	op := &ebiten.DrawTrianglesOptions{
+		AntiAlias: true,
+	}
+
+	screen.DrawTriangles(b.vertices, b.indices, whiteSub, op)
+
+	// Reset slices for the next frame, but keep the allocated memory. ✨
+	b.vertices = b.vertices[:0]
+	b.indices = b.indices[:0]
+}
+
+func (b *PolygonBatcher) AddPolygonOutline(xp, yp []float32, strokeWidth float32, clr color.RGBA) {
 	if len(xp) < 2 {
 		return
 	}
 
-	// Create a new vector path.
+	// This offset is the starting index for the vertices we are about to add.
+	vertexOffset := len(b.vertices)
+
 	var path vector.Path
-
-	// Move to the first point to start the path.
 	path.MoveTo(xp[0], yp[0])
-
-	// Create line segments to the subsequent points.
 	for i := 1; i < len(xp); i++ {
 		path.LineTo(xp[i], yp[i])
 	}
-
-	// Close the path to connect the last point back to the first.
 	path.Close()
 
-	// Stroke options define how the line looks (width, join style, etc.).
 	strokeOp := &vector.StrokeOptions{
-		Width: strokeWidth,
-		// LineJoin: vector.LineJoinMiter,
+		Width:    strokeWidth,
+		LineJoin: vector.LineJoinMiter, // Or another join style
 	}
 
-	// AppendVerticesAndIndicesForStroke generates the vertices and indices needed to render the path's outline.
-	// We pass nil for the destination slices to have new ones created.
-	vertices, indices := path.AppendVerticesAndIndicesForStroke(nil, nil, strokeOp)
+	// Append the new vertices and indices directly to the batcher's slices.
+	// This is the core of the operation.
+	b.vertices, b.indices = path.AppendVerticesAndIndicesForStroke(b.vertices, b.indices, strokeOp)
 
-	// Convert the RGBA color to float32 values (0.0-1.0) for the vertices.
-	cr := float32(clr.R) / 255.0
-	cg := float32(clr.G) / 255.0
-	cb := float32(clr.B) / 255.0
-	ca := float32(clr.A) / 255.0
-
-	// Apply the color to all the generated vertices.
-	// The SrcX and SrcY are set to 1 to use the solid color from our whiteSubImage.
-	for i := range vertices {
-		vertices[i].ColorR = cr
-		vertices[i].ColorG = cg
-		vertices[i].ColorB = cb
-		vertices[i].ColorA = ca
-		vertices[i].SrcX = 1
-		vertices[i].SrcY = 1
+	// Now, color only the vertices we just added.
+	cr, cg, cb, ca := float32(clr.R)/255, float32(clr.G)/255, float32(clr.B)/255, float32(clr.A)/255
+	for i := vertexOffset; i < len(b.vertices); i++ {
+		b.vertices[i].ColorR = cr
+		b.vertices[i].ColorG = cg
+		b.vertices[i].ColorB = cb
+		b.vertices[i].ColorA = ca
+		b.vertices[i].SrcX = 1
+		b.vertices[i].SrcY = 1
 	}
-
-	// Define the options for drawing the triangles.
-	drawOp := &ebiten.DrawTrianglesOptions{
-		AntiAlias: antiAliasLines, //TODO: if running in browser, this should be true
-	}
-
-	// white := whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image)
-
-	// Draw the triangles that form the line stroke.
-	screen.DrawTriangles(vertices, indices, whiteSub, drawOp)
 }
 
-func drawPolygonOutline2(screen *ebiten.Image, xp, yp []float32, strokeWidth float32, clr color.RGBA) {
-	for i := 0; i < len(xp)-1; i++ {
-		DrawLine(
-			screen,
-			int(xp[i]), int(yp[i]),
-			int(xp[i+1]), int(yp[i+1]),
-			clr)
+// AddPolygonWithOutline adds a filled polygon and its outline to the batch.
+// This is more efficient than calling separate fill and stroke functions.
+func (b *PolygonBatcher) AddPolygonAndOutline(xp, yp []float32, fillClr, strokeClr color.RGBA, strokeWidth float32) {
+	if len(xp) < 3 {
+		return // Need at least 3 vertices for a polygon.
+	}
+
+	// --- 1. Add the fill geometry ---
+	fillVertexOffset := uint16(len(b.vertices))
+
+	// Pre-calculate fill color components to avoid division in the loop.
+	fr, fg, fb, fa := float32(fillClr.R)/255, float32(fillClr.G)/255, float32(fillClr.B)/255, float32(fillClr.A)/255
+
+	for i := range xp {
+		v := ebiten.Vertex{
+			DstX:   xp[i],
+			DstY:   yp[i],
+			SrcX:   1, // Corresponds to the 1x1 whiteSub image
+			SrcY:   1,
+			ColorR: fr,
+			ColorG: fg,
+			ColorB: fb,
+			ColorA: fa,
+		}
+		b.vertices = append(b.vertices, v)
+	}
+
+	// Triangulate the polygon using a simple fan triangulation.
+	for i := 2; i < len(xp); i++ {
+		b.indices = append(b.indices,
+			fillVertexOffset,             // First vertex
+			fillVertexOffset+uint16(i-1), // Previous vertex
+			fillVertexOffset+uint16(i),   // Current vertex
+		)
+	}
+
+	// --- 2. Add the stroke geometry ---
+	strokeVertexOffset := len(b.vertices)
+
+	var path vector.Path
+	path.MoveTo(xp[0], yp[0])
+	for i := 1; i < len(xp); i++ {
+		path.LineTo(xp[i], yp[i])
+	}
+	path.Close()
+
+	strokeOp := &vector.StrokeOptions{
+		Width:    strokeWidth,
+		LineJoin: vector.LineJoinMiter,
+	}
+
+	// `AppendVerticesAndIndicesForStroke` efficiently generates the outline mesh.
+	b.vertices, b.indices = path.AppendVerticesAndIndicesForStroke(b.vertices, b.indices, strokeOp)
+
+	// Pre-calculate stroke color components.
+	sr, sg, sb, sa := float32(strokeClr.R)/255, float32(strokeClr.G)/255, float32(strokeClr.B)/255, float32(strokeClr.A)/255
+
+	// Color only the new vertices added for the stroke.
+	for i := strokeVertexOffset; i < len(b.vertices); i++ {
+		b.vertices[i].ColorR = sr
+		b.vertices[i].ColorG = sg
+		b.vertices[i].ColorB = sb
+		b.vertices[i].ColorA = sa
+		b.vertices[i].SrcX = 1
+		b.vertices[i].SrcY = 1
 	}
 }

@@ -55,7 +55,7 @@ func NewCube() *Object3d {
 		obj.theFaces.AddFace(face)
 	}
 
-	obj.Finished(false)
+	obj.Finished(false, false)
 	return obj
 }
 
@@ -134,7 +134,7 @@ func Extrude(xp []float64, zp []float64, height float64, clr color.RGBA) *Object
 	obj.theFaces.AddFace(topFace)
 	// obj.theFaces.AddFace(baseFace)
 
-	obj.Finished(true)
+	obj.Finished(true, true)
 	return obj
 }
 
@@ -187,7 +187,7 @@ func NewRectangle(width, height, length float64, clr color.RGBA) *Object3d {
 		obj.theFaces.AddFace(face)
 	}
 
-	obj.Finished(false)
+	obj.Finished(false, false)
 
 	return obj
 }
@@ -280,11 +280,11 @@ func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdi
 	generateFace([3]float64{-w2, h2, -l2}, [3]float64{width, 0, 0}, [3]float64{0, 0, length})
 
 	// Finalize the object by building its BSP tree.
-	obj.Finished(false)
+	obj.Finished(false, false)
 	return obj
 }
 
-func NewSubdividedPlane(xWidth, yLength float64, clr color.RGBA, subdivisions int) *Object3d {
+func gen(xWidth, yLength float64, clr color.RGBA, subdivisions int) *Object3d {
 	obj := NewObject_3d(true)
 	w2, l2 := xWidth/2.0, yLength/2.0
 
@@ -344,15 +344,142 @@ func NewSubdividedPlane(xWidth, yLength float64, clr color.RGBA, subdivisions in
 	// Top face (+Y direction)
 	generateFace([3]float64{-w2, 0, -l2}, [3]float64{xWidth, 0, 0}, [3]float64{0, 0, yLength})
 
+	return obj
+}
+
+func NewSubdividedPlane(xWidth, yLength float64, clr color.RGBA, subdivisions int) *Object3d {
+	obj := gen(xWidth, yLength, clr, subdivisions)
+
 	// Finalize the object by building its BSP tree.
-	obj.Finished(false)
+	obj.Finished(false, false)
+	return obj
+}
+
+func NewSubdividedPlaneHeightMap(xWidth,
+	yLength float64,
+	clr color.RGBA,
+	subdivisions int,
+	flatInX float64,
+	flatInY float64,
+) *Object3d {
+	obj := NewObject_3d(true)
+	w2, l2 := xWidth/2.0, yLength/2.0
+
+	if subdivisions < 1 {
+		subdivisions = 1 // Ensure at least one subdivision.
+	}
+
+	// generateFace is a helper function that constructs one of the six faces of the cuboid.
+	// It takes an origin point and two vectors (u, v) that define the plane and dimensions
+	// of the face. It then creates a grid of vertices and generates triangles.
+	generateFace := func(origin, u, v [3]float64) {
+
+		// Create a grid of vertices for the current face.
+		vertices := make([][][3]float64, subdivisions+1)
+		for i := range vertices {
+			vertices[i] = make([][3]float64, subdivisions+1)
+			for j := range vertices[i] {
+				heightAdjust := 0.0
+				// atEdgeOfPlane := (i == 0 || i == subdivisions || j == 0 || j == subdivisions)
+				// if !atEdgeOfPlane {
+
+				ui := float64(i) / float64(subdivisions)
+				vj := float64(j) / float64(subdivisions)
+				x := origin[0] + ui*u[0] + vj*v[0]
+				z := origin[2] + ui*u[2] + vj*v[2]
+
+				if x > 0 && x < flatInX && z > 0 && z < flatInY {
+					heightAdjust = 0.0 // Flat area in the middle
+				} else {
+
+					// rndHeight := rand.Float64()
+					// heightAdjust = rndHeight * 50.0
+
+					dist := math.Sqrt((x*x + z*z))
+					// // heightAdjust += (math.Sin(dist/100.0) * 20.0) // Add some wave-like variation
+					// heightAdjust = heightAdjust * (dist / 400.0)
+					// heightAdjust = (math.Sin(dist/100.0) * (dist / 10.0))
+					heightAdjust = ((math.Sin(x/200.0) + math.Sin(z/200.0)) * (dist / 25.0))
+					// + (rndHeight * 20)
+				}
+
+				vertices[i][j] = [3]float64{
+					x,
+					(origin[1] + ui*u[1] + vj*v[1]) - heightAdjust,
+					z,
+				}
+
+			}
+		}
+
+		// Create two triangles for each quad in the subdivision grid.
+		for i := 0; i < subdivisions; i++ {
+			for j := 0; j < subdivisions; j++ {
+				// Get the four corner vertices of the current quad.
+				p1 := vertices[i][j]
+				p2 := vertices[i+1][j]
+				p3 := vertices[i+1][j+1]
+				p4 := vertices[i][j+1]
+
+				heightAdjust := 0.0
+
+				// Create the first triangle for the quad (p1, p2, p3).
+				face1 := NewFace(nil, clr, nil)
+				face1.AddPoint(p1[0], p1[1]+heightAdjust, p1[2])
+				face1.AddPoint(p2[0], p2[1]+heightAdjust, p2[2])
+				face1.AddPoint(p3[0], p3[1]+heightAdjust, p3[2])
+				// The vertices are wound counter-clockwise to produce an outward-facing normal.
+				face1.Finished(FACE_REVERSE)
+				obj.theFaces.AddFace(face1)
+
+				// Create the second triangle for the quad (p1, p3, p4).
+				face2 := NewFace(nil, clr, nil)
+				face2.AddPoint(p1[0], p1[1]+heightAdjust, p1[2])
+				face2.AddPoint(p3[0], p3[1]+heightAdjust, p3[2])
+				face2.AddPoint(p4[0], p4[1]+heightAdjust, p4[2])
+				face2.Finished(FACE_REVERSE)
+				obj.theFaces.AddFace(face2)
+			}
+		}
+
+		// for i := 0; i < subdivisions; i++ {
+		// 	for j := 0; j < subdivisions; j++ {
+		// 		// Get the four corner vertices of the current quad.
+		// 		p1 := vertices[i][j]
+		// 		p2 := vertices[i+1][j]
+		// 		p3 := vertices[i+1][j+1]
+		// 		p4 := vertices[i][j+1]
+
+		// 		// Create the first triangle for the quad (p1, p2, p3).
+		// 		face1 := NewFace(nil, clr, nil)
+
+		// 		face1.AddPoint(p1[0], p1[1], p1[2])
+
+		// 		face1.AddPoint(p2[0], p2[1], p2[2])
+
+		// 		face1.AddPoint(p3[0], p3[1], p3[2])
+		// 		face1.AddPoint(p4[0], p4[1], p4[2])
+
+		// 		face1.Finished(FACE_REVERSE)
+		// 		obj.theFaces.AddFace(face1)
+
+		// 	}
+		// }
+
+	}
+
+	// Top face (+Y direction)
+	generateFace([3]float64{-w2, 0, -l2}, [3]float64{xWidth, 0, 0}, [3]float64{0, 0, yLength})
+
+	// Finalize the object by building its BSP tree.
+	obj.Finished(false, true)
 	return obj
 }
 
 // NewSphere creates a new Object_3d in the shape of an icosphere.
 // An icosphere is a sphere made of a mesh of triangles, which is more
 // uniform than a traditional UV sphere.
-func NewSphere(radius float64, subdivisions int, clr color.RGBA) *Object3d {
+func NewSphere(radius float64, subdivisions int, clr color.RGBA, finish bool) *Object3d {
 	obj := NewObject_3d(true)
 
 	// Define the 12 vertices of an Icosahedron.
@@ -426,7 +553,9 @@ func NewSphere(radius float64, subdivisions int, clr color.RGBA) *Object3d {
 		obj.theFaces.AddFace(face)
 	}
 
-	obj.Finished(true)
+	if finish {
+		obj.Finished(true, false)
+	}
 	return obj
 }
 
@@ -499,7 +628,7 @@ func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.R
 	}
 
 	// 3. Finalize the object by building its BSP tree.
-	obj.Finished(false)
+	obj.Finished(false, false)
 	return obj
 }
 
@@ -586,7 +715,7 @@ func NewUVSphere2(radius float64, sectors, stacks int, bodyClr, stripeClr color.
 		}
 	}
 
-	obj.Finished(false)
+	obj.Finished(false, false)
 	return obj
 }
 
@@ -663,7 +792,124 @@ func NewCylinder(radius, height float64, segments int, clr color.RGBA) *Object3d
 		obj.theFaces.AddFace(sideFace)
 	}
 
-	obj.Finished(true)
+	obj.Finished(true, false)
 	obj.CentreObject()
+	return obj
+}
+
+// Assume the following types from your project are available:
+// type Object3d struct { /* ... */ }
+// func NewObject_3d(bool) *Object3d { /* ... */ }
+// func (o *Object3d) Finished(bool) { /* ... */ }
+// func (o *Object3d) CentreObject() { /* ... */ }
+//
+// type Face struct { /* ... */ }
+// func NewFace(nil, color.RGBA, nil) *Face { /* ... */ }
+// func (f *Face) AddPoint(x, y, z float64) { /* ... */ }
+// func (f *Face) Finished(string) { /* ... */ }
+//
+// const FACE_NORMAL = "FACE_NORMAL" // Or whatever the constant is.
+
+// NewRing creates a new Object3d in the shape of a ring or pipe.
+// The ring is initially built with its base at Y=0 and is then centered at the origin.
+// 'segments' controls the smoothness of the curved surfaces.
+// 'outerRadius' and 'innerRadius' define the ring's thickness.
+func NewRing(outerRadius, innerRadius, height float64, segments int, clr color.RGBA, finish bool) *Object3d {
+	// A ring must have at least 3 segments and the outer radius must be larger than the inner.
+	if segments < 3 || outerRadius <= innerRadius {
+		return NewObject_3d(true) // Return an empty object if parameters are invalid.
+	}
+
+	obj := NewObject_3d(true)
+
+	// --- 1. Generate Vertices ---
+
+	// Create slices to hold the ordered vertices for the four circular edges of the ring.
+	outerTopVertices := make([][3]float64, segments)
+	innerTopVertices := make([][3]float64, segments)
+	outerBaseVertices := make([][3]float64, segments)
+	innerBaseVertices := make([][3]float64, segments)
+
+	// Calculate vertex positions for one full circle at both radii.
+	for i := 0; i < segments; i++ {
+		angle := (2.0 * math.Pi / float64(segments)) * float64(i)
+		cosAngle := math.Cos(angle)
+		sinAngle := math.Sin(angle)
+
+		// Outer vertices
+		ox, oz := outerRadius*cosAngle, outerRadius*sinAngle
+		outerTopVertices[i] = [3]float64{ox, height, oz}
+		outerBaseVertices[i] = [3]float64{ox, 0, oz}
+
+		// Inner vertices
+		ix, iz := innerRadius*cosAngle, innerRadius*sinAngle
+		innerTopVertices[i] = [3]float64{ix, height, iz}
+		innerBaseVertices[i] = [3]float64{ix, 0, iz}
+	}
+
+	// --- 2. Build Faces ---
+
+	// Create faces for each segment connecting the inner and outer vertices.
+	for i := 0; i < segments; i++ {
+		// Indices for the current segment and the next, wrapping around.
+		i2 := (i + 1) % segments
+
+		// Get the four corners of the quad for the top surface of this segment.
+		ot1 := outerTopVertices[i]  // Outer Top, point 1
+		ot2 := outerTopVertices[i2] // Outer Top, point 2
+		it1 := innerTopVertices[i]  // Inner Top, point 1
+		it2 := innerTopVertices[i2] // Inner Top, point 2
+
+		// Get the four corners for the bottom surface.
+		ob1 := outerBaseVertices[i]  // Outer Base, point 1
+		ob2 := outerBaseVertices[i2] // Outer Base, point 2
+		ib1 := innerBaseVertices[i]  // Inner Base, point 1
+		ib2 := innerBaseVertices[i2] // Inner Base, point 2
+
+		// --- Top Face ---
+		// Create the top face with vertices in CCW order for an upward (+Y) normal.
+		topFace := NewFace(nil, clr, nil)
+		topFace.AddPoint(ot1[0], ot1[1], ot1[2])
+		topFace.AddPoint(ot2[0], ot2[1], ot2[2])
+		topFace.AddPoint(it2[0], it2[1], it2[2])
+		topFace.AddPoint(it1[0], it1[1], it1[2])
+		topFace.Finished(FACE_NORMAL)
+		obj.theFaces.AddFace(topFace)
+
+		// --- Bottom Face ---
+		// Create the bottom face with vertices in CW order for a downward (-Y) normal.
+		bottomFace := NewFace(nil, clr, nil)
+		bottomFace.AddPoint(ob1[0], ob1[1], ob1[2])
+		bottomFace.AddPoint(ib1[0], ib1[1], ib1[2])
+		bottomFace.AddPoint(ib2[0], ib2[1], ib2[2])
+		bottomFace.AddPoint(ob2[0], ob2[1], ob2[2])
+		bottomFace.Finished(FACE_NORMAL)
+		obj.theFaces.AddFace(bottomFace)
+
+		// --- Outer Wall Face ---
+		// Create the outer wall with CCW order for an outward-pointing normal.
+		outerWallFace := NewFace(nil, clr, nil)
+		outerWallFace.AddPoint(ob1[0], ob1[1], ob1[2])
+		outerWallFace.AddPoint(ob2[0], ob2[1], ob2[2])
+		outerWallFace.AddPoint(ot2[0], ot2[1], ot2[2])
+		outerWallFace.AddPoint(ot1[0], ot1[1], ot1[2])
+		outerWallFace.Finished(FACE_NORMAL)
+		obj.theFaces.AddFace(outerWallFace)
+
+		// --- Inner Wall Face ---
+		// Create the inner wall. The vertex order is reversed (CW from outside,
+		// but CCW from inside) to make the normal point inward.
+		innerWallFace := NewFace(nil, clr, nil)
+		innerWallFace.AddPoint(ib1[0], ib1[1], ib1[2])
+		innerWallFace.AddPoint(it1[0], it1[1], it1[2])
+		innerWallFace.AddPoint(it2[0], it2[1], it2[2])
+		innerWallFace.AddPoint(ib2[0], ib2[1], ib2[2])
+		innerWallFace.Finished(FACE_NORMAL)
+		obj.theFaces.AddFace(innerWallFace)
+	}
+
+	if finish {
+		obj.Finished(true, false)
+	}
 	return obj
 }

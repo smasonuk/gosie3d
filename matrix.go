@@ -10,7 +10,7 @@ import (
 
 func NewMatrix() *Matrix {
 	return &Matrix{
-		ThisMatrix: make([][]float64, 0, 100),
+		ThisMatrix: make([][]float64, 0, 10), // TODO: make smaller or configurable
 	}
 }
 

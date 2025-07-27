@@ -6,12 +6,11 @@ import (
 	"image/color"
 	"io"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
-
-	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // const (
@@ -35,11 +34,29 @@ type Object3d struct {
 	yLength            float64
 	zLength            float64
 	objectDirection    *Vector3
+	drawLinesOnly      bool
+
+	// for when not using BSP
+	faceIndicies   [][]int // Indices of the faces in the faceMesh
+	normalIndicies []int
 }
 
-func (o *Object3d) PaintObject(screen *ebiten.Image, x, y int, lightingChange bool) {
-	if o.root != nil {
-		o.root.PaintWithShading(screen, x, y, o.transFaceMesh.Points, o.transNormalMesh.Points, lightingChange, true)
+func (o *Object3d) SetDrawLinesOnly(only bool) {
+	o.drawLinesOnly = only
+}
+
+func (o *Object3d) GetDrawLinesOnly() bool {
+	return o.drawLinesOnly
+}
+
+func (o *Object3d) PaintObject(batcher *PolygonBatcher, x, y int, lightingChange bool, screenWidth, screenHeight float32) {
+	if o.canPaintWithoutBSP {
+		o.PaintWithoutBSP(batcher, x, y, screenHeight, screenWidth)
+
+	} else {
+		if o.root != nil {
+			o.root.PaintWithShading(batcher, x, y, o.transFaceMesh.Points, o.transNormalMesh.Points, lightingChange, o.drawLinesOnly, screenWidth, screenHeight)
+		}
 	}
 }
 
@@ -111,37 +128,62 @@ func NewObject_3d(canPaintWithoutBSP bool) *Object3d {
 		theFaces:           NewFaceStore(),
 		rotMatrix:          IdentMatrix(),
 		canPaintWithoutBSP: canPaintWithoutBSP,
+		faceIndicies:       make([][]int, 0),
+		normalIndicies:     make([]int, 0),
 	}
 }
 
 func (o *Object3d) Clone() *Object3d {
+
 	clone := &Object3d{
 		// shared
-		faceMesh:   o.faceMesh,
-		normalMesh: o.normalMesh,
-		theFaces:   o.theFaces,
-		root:       o.root,
+		faceMesh:       o.faceMesh,
+		normalMesh:     o.normalMesh,
+		theFaces:       o.theFaces,
+		root:           o.root,
+		faceIndicies:   o.faceIndicies,
+		normalIndicies: o.normalIndicies,
 
 		// instance-specific
-		transFaceMesh:   o.transFaceMesh.Copy(),
-		transNormalMesh: o.transNormalMesh.Copy(),
-		rotMatrix:       IdentMatrix(),
+		transFaceMesh:      o.transFaceMesh.Copy(),
+		transNormalMesh:    o.transNormalMesh.Copy(),
+		rotMatrix:          IdentMatrix(),
+		canPaintWithoutBSP: o.canPaintWithoutBSP,
 	}
 	return clone
 }
 
-func (o *Object3d) Finished(centerObject bool) {
+func (o *Object3d) createFaceList(faces *FaceStore, newFaces *FaceMesh, newNormMesh *NormalMesh) {
+	for i := 0; i < faces.FaceCount(); i++ {
+		originalFace := faces.GetFace(i)
+		newFace, ind := newFaces.AddFace(originalFace)
+		newFaces.AddFace(newFace)
 
+		normal := originalFace.GetNormal()
+		_, normalIndex := newNormMesh.AddNormal(normal)
+
+		o.faceIndicies = append(o.faceIndicies, ind)
+		o.normalIndicies = append(o.normalIndicies, normalIndex)
+	}
+}
+
+func (o *Object3d) Finished(centerObject bool, useBspTree bool) {
 	log.Println("Creating BSP Tree...")
 	if o.theFaces.FaceCount() > 0 {
-		// o.root = o.createBspTree(o.theFaces, o.transFaceMesh, o.transNormalMesh)
-		o.root = o.createBspTree(o.theFaces, o.transFaceMesh, o.transNormalMesh)
+		if useBspTree {
+			o.root = o.createBspTree(o.theFaces, o.transFaceMesh, o.transNormalMesh)
+			o.canPaintWithoutBSP = false
+		} else {
+			o.createFaceList(o.theFaces, o.transFaceMesh, o.transNormalMesh)
+			o.canPaintWithoutBSP = true
+		}
 	}
 
 	log.Println("BSP Tree Created.")
 
-	o.faceMesh = &FaceMesh{Mesh: *o.transFaceMesh.Mesh.Copy()}
-	o.normalMesh = &NormalMesh{Mesh: *o.transNormalMesh.Mesh.Copy()}
+	o.faceMesh = o.transFaceMesh.Copy()
+	o.normalMesh = o.transNormalMesh.Copy()
+	// &NormalMesh{Mesh: *o.transNormalMesh.Mesh.Copy()}
 
 	if centerObject {
 		o.CentreObject()
@@ -441,7 +483,7 @@ func NewObjectFromDXF(reader io.Reader, reverse int) (*Object3d, error) {
 	}
 
 	// 3. Finalize the new object by building its BSP tree.
-	obj.Finished(false)
+	obj.Finished(false, true)
 
 	// 4. On success, return the fully populated object and a nil error.
 	return obj, nil
@@ -486,6 +528,251 @@ func ApplyRotateYObjectMatrix(amountOfMovementInRads float64, existingMatrix *Ma
 	return rotMatrix.MultiplyBy(existingMatrix)
 }
 
-func (o *Object3d) PaintObjectWithBackfaceCullingOnly() {
+func (o *Object3d) AddFacesFromObject(other *Object3d) {
+	if other == nil || other.theFaces == nil || other.theFaces.FaceCount() == 0 {
+		return
+	}
+
+	for i := 0; i < other.theFaces.FaceCount(); i++ {
+		face := other.theFaces.GetFace(i)
+		newFace := face.Copy()
+
+		o.theFaces.AddFace(newFace)
+	}
+}
+
+func (o *Object3d) PaintWithoutBSP(batcher *PolygonBatcher, x, y int, screenHeight, screenWidth float32) {
+	points := make([][]float64, 0, 10)
+	for i := 0; i < len(o.faceIndicies); i++ {
+		faceIndices := o.faceIndicies[i]
+		normalIndex := o.normalIndicies[i]
+		facePointsInCameraSpace := points[:]
+		for _, index := range faceIndices {
+			point := o.transFaceMesh.Points.ThisMatrix[index]
+			facePointsInCameraSpace = append(facePointsInCameraSpace, point)
+		}
+		// face := o.transFaceMesh.faces[i]
+		face := o.theFaces.faces[i]
+
+		normal := o.transNormalMesh.Points.ThisMatrix[normalIndex]
+
+		o.paintFace(batcher, x, y, facePointsInCameraSpace, normal, screenWidth, screenHeight, face)
+	}
+}
+
+func (o *Object3d) paintFace(batcher *PolygonBatcher, x, y int, points [][]float64, normal []float64, screenWidth, screenHeight float32, face *Face) {
+
+	firstPoint := points[0]
+	where := normal[0]*firstPoint[0] +
+		normal[1]*firstPoint[1] +
+		normal[2]*firstPoint[2]
+
+	if where > 0 { // Facing the camera
+		o.paintFace2(batcher,
+			x,
+			y,
+			firstPoint,
+			points,
+			normal,
+			screenWidth,
+			screenHeight,
+			face,
+		)
+	}
 
 }
+
+func (o *Object3d) paintFace2(
+	batcher *PolygonBatcher,
+	x, y int,
+	firstTransformedPoint []float64,
+	initial3DPoints [][]float64,
+	transformedNormal []float64,
+	screenWidth, screenHeight float32,
+	face *Face,
+) bool {
+
+	pointsToUse := clipPolygonAgainstNearPlane(initial3DPoints)
+	if len(pointsToUse) < 3 {
+		return false
+	}
+
+	initialScreenPoints := make([]Point, len(pointsToUse))
+	for i, point := range pointsToUse {
+		// At this stage, point[2] (z) is guaranteed to be >= nearPlaneZ,
+		// so perspective division is safe.
+		z := float32(point[2])
+		initialScreenPoints[i] = Point{
+			X: float32((conversionFactor*point[0])/float64(z)) + float32(x),
+			Y: float32((conversionFactor*point[1])/float64(z)) + float32(y),
+		}
+	}
+
+	// clip to screen
+	clippedPoints := clipPolygon(initialScreenPoints, screenWidth, screenHeight)
+	if len(clippedPoints) < 3 {
+		return false
+	}
+
+	finalScreenPointsX := make([]float32, len(clippedPoints))
+	finalScreenPointsY := make([]float32, len(clippedPoints))
+	for i, p := range clippedPoints {
+		finalScreenPointsX[i] = p.X
+		finalScreenPointsY[i] = p.Y
+	}
+
+	col := face.Col
+	polyColor := col
+	if true {
+		shadingRefPoint := firstTransformedPoint
+		polyColor = getColor(shadingRefPoint, transformedNormal, polyColor)
+	}
+
+	// if !linesOnly {
+	black := color.RGBA{R: 100, G: 100, B: 100, A: 25}
+	batcher.AddPolygonAndOutline(finalScreenPointsX, finalScreenPointsY, polyColor, black, 1.0)
+
+	// } else {
+	// 	black := color.RGBA{R: 0, G: 0, B: 0, A: 255}
+	// 	// batcher.AddPolygonOutline(finalScreenPointsX, finalScreenPointsY, 1, polyColor)
+	// 	batcher.AddPolygonAndOutline(finalScreenPointsX, finalScreenPointsY, black, polyColor, 1.0)
+	// }
+
+	return false
+}
+
+// GetColor calculates the color of a polygon based on simple lighting.
+func getColor(
+	firstTransformedPoint []float64,
+	transformedNormal []float64,
+	polyColor color.RGBA,
+) color.RGBA {
+	const ambientLight = 0.65
+	const spotlightConePower = 10.0
+	const spotlightLightAmount = 1.0 - ambientLight
+
+	diffuseFactor := transformedNormal[2]
+	if diffuseFactor < 0 {
+		diffuseFactor = 0
+	}
+
+	var spotlightFactor float64
+	lenVecToPoint := GetLength2(firstTransformedPoint)
+
+	if lenVecToPoint > 0 {
+		cosAngle := firstTransformedPoint[2] / lenVecToPoint
+		if cosAngle < 0 {
+			cosAngle = 0
+		}
+		spotlightFactor = math.Pow(cosAngle, spotlightConePower)
+	} else {
+		spotlightFactor = 1.0
+	}
+
+	spotlightBrightness := diffuseFactor * spotlightFactor * spotlightLightAmount
+	finalBrightness := ambientLight + spotlightBrightness
+
+	c := 240 - int(finalBrightness*240)
+	min := 7
+	r1 := clamp2(int(polyColor.R)-c, min, 255)
+	g1 := clamp2(int(polyColor.G)-c, min, 255)
+	b1 := clamp2(int(polyColor.B)-c, min, 255)
+	polyColor = color.RGBA{R: uint8(r1), G: uint8(g1), B: uint8(b1), A: polyColor.A}
+
+	return polyColor
+}
+
+// func (o *Object3d) drae(batcher *PolygonBatcher, x, y int, transPoints *Matrix, transNormals *Matrix, doShading bool, linesOnly bool, screenWidth, screenHeight float32) {
+
+// 	transformedNormal := transNormals.ThisMatrix[b.normalIndex]
+// 	firstTransformedPoint := transPoints.ThisMatrix[b.facePointIndices[0]]
+
+// 	// Determine if the polygon is facing the camera
+// 	where := transformedNormal[0]*firstTransformedPoint[0] +
+// 		transformedNormal[1]*firstTransformedPoint[1] +
+// 		transformedNormal[2]*firstTransformedPoint[2]
+
+// 	if where <= 0 { // Facing away from the camera so don't paint it
+
+// 	} else {
+
+// 		o.paintPoly(batcher, x, y,
+// 			transPoints,
+// 			transNormals,
+// 			doShading,
+// 			firstTransformedPoint,
+// 			transformedNormal,
+// 			linesOnly,
+// 			screenWidth,
+// 			screenHeight,
+// 		)
+
+// 	}
+// }
+
+// func (o *Object3d) paintPoly(
+// 	batcher *PolygonBatcher,
+// 	x, y int,
+// 	verticesInCameraSpace *Matrix,
+// 	normalsInCameraSpace *Matrix,
+// 	shadePoly bool,
+// 	firstTransformedPoint []float64,
+// 	transformedNormal []float64,
+// 	linesOnly bool,
+// 	screenWidth, screenHeight float32,
+// ) bool {
+
+// 	initial3DPoints := b.pointsToUse[:0] // Reuse the slice to avoid allocation
+// 	for _, pointIndex := range b.facePointIndices {
+// 		initial3DPoints = append(initial3DPoints, verticesInCameraSpace.ThisMatrix[pointIndex])
+// 	}
+
+// 	pointsToUse := clipPolygonAgainstNearPlane(initial3DPoints)
+
+// 	// If clipping results in a polygon with too few vertices, don't draw it.
+// 	if len(pointsToUse) < 3 {
+// 		return false
+// 	}
+
+// 	initialScreenPoints := make([]Point, len(pointsToUse))
+// 	for i, point := range pointsToUse {
+// 		// At this stage, point[2] (z) is guaranteed to be >= nearPlaneZ,
+// 		// so perspective division is safe.
+// 		z := float32(point[2])
+// 		initialScreenPoints[i] = Point{
+// 			X: float32((conversionFactor*point[0])/float64(z)) + float32(x),
+// 			Y: float32((conversionFactor*point[1])/float64(z)) + float32(y),
+// 		}
+// 	}
+
+// 	clippedPoints := clipPolygon(initialScreenPoints, screenWidth, screenHeight)
+
+// 	if len(clippedPoints) < 3 {
+// 		return false
+// 	}
+
+// 	finalScreenPointsX := make([]float32, len(clippedPoints))
+// 	finalScreenPointsY := make([]float32, len(clippedPoints))
+// 	for i, p := range clippedPoints {
+// 		finalScreenPointsX[i] = p.X
+// 		finalScreenPointsY[i] = p.Y
+// 	}
+
+// 	polyColor := color.RGBA{R: b.colRed, G: b.colGreen, B: b.colBlue, A: b.colAlpha}
+// 	if shadePoly {
+// 		shadingRefPoint := verticesInCameraSpace.ThisMatrix[b.facePointIndices[0]]
+// 		polyColor = b.GetColor(shadingRefPoint, transformedNormal, polyColor)
+// 	}
+
+// 	if !linesOnly {
+// 		black := color.RGBA{R: 100, G: 100, B: 100, A: 25}
+// 		batcher.AddPolygonAndOutline(finalScreenPointsX, finalScreenPointsY, polyColor, black, 1.0)
+
+// 	} else {
+// 		black := color.RGBA{R: 0, G: 0, B: 0, A: 255}
+// 		// batcher.AddPolygonOutline(finalScreenPointsX, finalScreenPointsY, 1, polyColor)
+// 		batcher.AddPolygonAndOutline(finalScreenPointsX, finalScreenPointsY, black, polyColor, 1.0)
+// 	}
+
+// 	return false
+// }
