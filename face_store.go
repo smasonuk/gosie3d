@@ -1,5 +1,7 @@
 package gosie3d
 
+import "sort"
+
 type FaceStore struct {
 	faces []*Face
 }
@@ -23,4 +25,18 @@ func (fs *FaceStore) RemoveFaceAt(i int) *Face {
 	f := fs.faces[i]
 	fs.faces = append(fs.faces[:i], fs.faces[i+1:]...)
 	return f
+}
+
+// sort the faces so that the faces farther away are at the start of the slice
+func (fs *FaceStore) SortFacesByDistance(pos *Vector3) {
+	if len(fs.faces) == 0 {
+		return
+	}
+
+	// Sort the faces by distance to the position
+	sort.Slice(fs.faces, func(i, j int) bool {
+		distanceI := fs.faces[i].GetMidPoint().DistanceTo(pos)
+		distanceJ := fs.faces[j].GetMidPoint().DistanceTo(pos)
+		return distanceI > distanceJ
+	})
 }

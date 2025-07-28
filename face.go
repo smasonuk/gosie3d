@@ -121,3 +121,25 @@ func (f *Face) createNormal() {
 	nor.Normalize()
 	f.normal = nor.Copy()
 }
+
+// get midpoint of the face
+func (f *Face) GetMidPoint() *Vector3 {
+	if len(f.Points) == 0 {
+		return NewVector3(0, 0, 0)
+	}
+
+	sumX, sumY, sumZ := 0.0, 0.0, 0.0
+	for _, p := range f.Points {
+		sumX += p[0]
+		sumY += p[1]
+		sumZ += p[2]
+	}
+	count := float64(len(f.Points))
+	return NewVector3(sumX/count, sumY/count, sumZ/count)
+}
+
+// get the distance from the face to a point
+func (f *Face) GetDistanceToPoint(p *Vector3) float64 {
+	midpoint := f.GetMidPoint()
+	return midpoint.DistanceTo(p)
+}

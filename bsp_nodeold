@@ -25,8 +25,6 @@ type BspNode struct {
 
 const nearPlaneZ = 25
 const conversionFactor = 700
-const antiAlias = true
-const antiAliasLines = true
 
 func NewBspNode(facePoints [][]float64, faceNormal *Vector3, faceColor color.RGBA, pointIndices []int, normalIdx int) *BspNode {
 	b := &BspNode{

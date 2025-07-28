@@ -51,7 +51,7 @@ func (o *Object3d) GetDrawLinesOnly() bool {
 
 func (o *Object3d) PaintObject(batcher *PolygonBatcher, x, y int, lightingChange bool, screenWidth, screenHeight float32) {
 	if o.canPaintWithoutBSP {
-		o.PaintWithoutBSP(batcher, x, y, screenHeight, screenWidth)
+		o.paintWithoutBSP(batcher, x, y, screenHeight, screenWidth)
 
 	} else {
 		if o.root != nil {
@@ -121,15 +121,14 @@ func (o *Object3d) SetRotMatrix(m *Matrix) {
 	o.rotMatrix = m
 }
 
-func NewObject_3d(canPaintWithoutBSP bool) *Object3d {
+func NewObject_3d() *Object3d {
 	return &Object3d{
-		transFaceMesh:      NewFaceMesh(),
-		transNormalMesh:    NewNormalMesh(),
-		theFaces:           NewFaceStore(),
-		rotMatrix:          IdentMatrix(),
-		canPaintWithoutBSP: canPaintWithoutBSP,
-		faceIndicies:       make([][]int, 0),
-		normalIndicies:     make([]int, 0),
+		transFaceMesh:   NewFaceMesh(),
+		transNormalMesh: NewNormalMesh(),
+		theFaces:        NewFaceStore(),
+		rotMatrix:       IdentMatrix(),
+		faceIndicies:    make([][]int, 0),
+		normalIndicies:  make([]int, 0),
 	}
 }
 
@@ -411,7 +410,7 @@ func LoadObjectFromDXFFile(fileName string, reverse int) (*Object3d, error) {
 // already built, or an error if the file cannot be parsed.
 func NewObjectFromDXF(reader io.Reader, reverse int) (*Object3d, error) {
 	// 1. Create a new, empty object to populate.
-	obj := NewObject_3d(false)
+	obj := NewObject_3d()
 
 	scanner := bufio.NewScanner(reader)
 
@@ -541,7 +540,7 @@ func (o *Object3d) AddFacesFromObject(other *Object3d) {
 	}
 }
 
-func (o *Object3d) PaintWithoutBSP(batcher *PolygonBatcher, x, y int, screenHeight, screenWidth float32) {
+func (o *Object3d) paintWithoutBSP(batcher *PolygonBatcher, x, y int, screenHeight, screenWidth float32) {
 	points := make([][]float64, 0, 10)
 	for i := 0; i < len(o.faceIndicies); i++ {
 		faceIndices := o.faceIndicies[i]
@@ -551,7 +550,6 @@ func (o *Object3d) PaintWithoutBSP(batcher *PolygonBatcher, x, y int, screenHeig
 			point := o.transFaceMesh.Points.ThisMatrix[index]
 			facePointsInCameraSpace = append(facePointsInCameraSpace, point)
 		}
-		// face := o.transFaceMesh.faces[i]
 		face := o.theFaces.faces[i]
 
 		normal := o.transNormalMesh.Points.ThisMatrix[normalIndex]
@@ -628,15 +626,15 @@ func (o *Object3d) paintFace2(
 		polyColor = getColor(shadingRefPoint, transformedNormal, polyColor)
 	}
 
-	// if !linesOnly {
-	black := color.RGBA{R: 100, G: 100, B: 100, A: 25}
-	batcher.AddPolygonAndOutline(finalScreenPointsX, finalScreenPointsY, polyColor, black, 1.0)
+	if !o.drawLinesOnly {
+		black := color.RGBA{R: 50, G: 50, B: 50, A: 25}
+		batcher.AddPolygonAndOutline(finalScreenPointsX, finalScreenPointsY, polyColor, black, 1.0)
 
-	// } else {
-	// 	black := color.RGBA{R: 0, G: 0, B: 0, A: 255}
-	// 	// batcher.AddPolygonOutline(finalScreenPointsX, finalScreenPointsY, 1, polyColor)
-	// 	batcher.AddPolygonAndOutline(finalScreenPointsX, finalScreenPointsY, black, polyColor, 1.0)
-	// }
+	} else {
+		black := color.RGBA{R: 0, G: 0, B: 0, A: 255}
+		// batcher.AddPolygonOutline(finalScreenPointsX, finalScreenPointsY, 1, polyColor)
+		batcher.AddPolygonAndOutline(finalScreenPointsX, finalScreenPointsY, black, polyColor, 1.0)
+	}
 
 	return false
 }
@@ -681,98 +679,3 @@ func getColor(
 
 	return polyColor
 }
-
-// func (o *Object3d) drae(batcher *PolygonBatcher, x, y int, transPoints *Matrix, transNormals *Matrix, doShading bool, linesOnly bool, screenWidth, screenHeight float32) {
-
-// 	transformedNormal := transNormals.ThisMatrix[b.normalIndex]
-// 	firstTransformedPoint := transPoints.ThisMatrix[b.facePointIndices[0]]
-
-// 	// Determine if the polygon is facing the camera
-// 	where := transformedNormal[0]*firstTransformedPoint[0] +
-// 		transformedNormal[1]*firstTransformedPoint[1] +
-// 		transformedNormal[2]*firstTransformedPoint[2]
-
-// 	if where <= 0 { // Facing away from the camera so don't paint it
-
-// 	} else {
-
-// 		o.paintPoly(batcher, x, y,
-// 			transPoints,
-// 			transNormals,
-// 			doShading,
-// 			firstTransformedPoint,
-// 			transformedNormal,
-// 			linesOnly,
-// 			screenWidth,
-// 			screenHeight,
-// 		)
-
-// 	}
-// }
-
-// func (o *Object3d) paintPoly(
-// 	batcher *PolygonBatcher,
-// 	x, y int,
-// 	verticesInCameraSpace *Matrix,
-// 	normalsInCameraSpace *Matrix,
-// 	shadePoly bool,
-// 	firstTransformedPoint []float64,
-// 	transformedNormal []float64,
-// 	linesOnly bool,
-// 	screenWidth, screenHeight float32,
-// ) bool {
-
-// 	initial3DPoints := b.pointsToUse[:0] // Reuse the slice to avoid allocation
-// 	for _, pointIndex := range b.facePointIndices {
-// 		initial3DPoints = append(initial3DPoints, verticesInCameraSpace.ThisMatrix[pointIndex])
-// 	}
-
-// 	pointsToUse := clipPolygonAgainstNearPlane(initial3DPoints)
-
-// 	// If clipping results in a polygon with too few vertices, don't draw it.
-// 	if len(pointsToUse) < 3 {
-// 		return false
-// 	}
-
-// 	initialScreenPoints := make([]Point, len(pointsToUse))
-// 	for i, point := range pointsToUse {
-// 		// At this stage, point[2] (z) is guaranteed to be >= nearPlaneZ,
-// 		// so perspective division is safe.
-// 		z := float32(point[2])
-// 		initialScreenPoints[i] = Point{
-// 			X: float32((conversionFactor*point[0])/float64(z)) + float32(x),
-// 			Y: float32((conversionFactor*point[1])/float64(z)) + float32(y),
-// 		}
-// 	}
-
-// 	clippedPoints := clipPolygon(initialScreenPoints, screenWidth, screenHeight)
-
-// 	if len(clippedPoints) < 3 {
-// 		return false
-// 	}
-
-// 	finalScreenPointsX := make([]float32, len(clippedPoints))
-// 	finalScreenPointsY := make([]float32, len(clippedPoints))
-// 	for i, p := range clippedPoints {
-// 		finalScreenPointsX[i] = p.X
-// 		finalScreenPointsY[i] = p.Y
-// 	}
-
-// 	polyColor := color.RGBA{R: b.colRed, G: b.colGreen, B: b.colBlue, A: b.colAlpha}
-// 	if shadePoly {
-// 		shadingRefPoint := verticesInCameraSpace.ThisMatrix[b.facePointIndices[0]]
-// 		polyColor = b.GetColor(shadingRefPoint, transformedNormal, polyColor)
-// 	}
-
-// 	if !linesOnly {
-// 		black := color.RGBA{R: 100, G: 100, B: 100, A: 25}
-// 		batcher.AddPolygonAndOutline(finalScreenPointsX, finalScreenPointsY, polyColor, black, 1.0)
-
-// 	} else {
-// 		black := color.RGBA{R: 0, G: 0, B: 0, A: 255}
-// 		// batcher.AddPolygonOutline(finalScreenPointsX, finalScreenPointsY, 1, polyColor)
-// 		batcher.AddPolygonAndOutline(finalScreenPointsX, finalScreenPointsY, black, polyColor, 1.0)
-// 	}
-
-// 	return false
-// }

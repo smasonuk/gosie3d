@@ -3,11 +3,14 @@ package gosie3d
 import (
 	"image/color"
 	"math"
+	"math/rand"
 	"sort"
+
+	"github.com/aquilax/go-perlin"
 )
 
 func NewCube() *Object3d {
-	obj := NewObject_3d(true)
+	obj := NewObject_3d()
 	s := 40.0 // size
 
 	// The 8 vertices of the cube
@@ -82,7 +85,7 @@ func Extrude(xp []float64, zp []float64, height float64, clr color.RGBA) *Object
 
 	// Cannot form a polygon with less than 3 points.
 	if len(points) < 3 {
-		return NewObject_3d(true) // Return an empty object
+		return NewObject_3d() // Return an empty object
 	}
 
 	// Calculate the centroid (average point) to sort around.
@@ -104,7 +107,7 @@ func Extrude(xp []float64, zp []float64, height float64, clr color.RGBA) *Object
 
 	// --- 2. Build the 3D Object ---
 
-	obj := NewObject_3d(true)
+	obj := NewObject_3d()
 	topFace := NewFace(nil, clr, nil)
 	baseFace := NewFace(nil, clr, nil)
 
@@ -142,7 +145,7 @@ func Extrude(xp []float64, zp []float64, height float64, clr color.RGBA) *Object
 // It's centered at the origin and has the specified dimensions and color.
 func NewRectangle(width, height, length float64, clr color.RGBA) *Object3d {
 	// create a new, empty object to populate.
-	obj := NewObject_3d(true)
+	obj := NewObject_3d()
 
 	// calculate half-dimensions for centering the rectangle at the origin.
 	w2 := width / 2.0
@@ -201,7 +204,7 @@ func NewRectangle(width, height, length float64, clr color.RGBA) *Object3d {
 //	of 2 will split a face into a 2x2 grid of quads (8 triangles). A value of 1
 //	will result in one quad per face (2 triangles).
 func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdivisions int) *Object3d {
-	obj := NewObject_3d(true)
+	obj := NewObject_3d()
 	w2, h2, l2 := width/2.0, height/2.0, length/2.0
 
 	if subdivisions < 1 {
@@ -285,7 +288,7 @@ func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdi
 }
 
 func gen(xWidth, yLength float64, clr color.RGBA, subdivisions int) *Object3d {
-	obj := NewObject_3d(true)
+	obj := NewObject_3d()
 	w2, l2 := xWidth/2.0, yLength/2.0
 
 	if subdivisions < 1 {
@@ -362,11 +365,11 @@ func NewSubdividedPlaneHeightMap(xWidth,
 	flatInX float64,
 	flatInY float64,
 ) *Object3d {
-	obj := NewObject_3d(true)
+	obj := NewObject_3d()
 	w2, l2 := xWidth/2.0, yLength/2.0
 
 	if subdivisions < 1 {
-		subdivisions = 1 // Ensure at least one subdivision.
+		subdivisions = 1
 	}
 
 	// generateFace is a helper function that constructs one of the six faces of the cuboid.
@@ -402,6 +405,136 @@ func NewSubdividedPlaneHeightMap(xWidth,
 					heightAdjust = ((math.Sin(x/200.0) + math.Sin(z/200.0)) * (dist / 25.0))
 					// + (rndHeight * 20)
 				}
+
+				vertices[i][j] = [3]float64{
+					x,
+					(origin[1] + ui*u[1] + vj*v[1]) - heightAdjust,
+					z,
+				}
+
+			}
+		}
+
+		// // Create two triangles for each quad in the subdivision grid.
+		// for i := 0; i < subdivisions; i++ {
+		// 	for j := 0; j < subdivisions; j++ {
+		// 		// Get the four corner vertices of the current quad.
+		// 		p1 := vertices[i][j]
+		// 		p2 := vertices[i+1][j]
+		// 		p3 := vertices[i+1][j+1]
+		// 		p4 := vertices[i][j+1]
+
+		// 		heightAdjust := 0.0
+
+		// 		// Create the first triangle for the quad (p1, p2, p3).
+		// 		face1 := NewFace(nil, clr, nil)
+		// 		face1.AddPoint(p1[0], p1[1]+heightAdjust, p1[2])
+		// 		face1.AddPoint(p2[0], p2[1]+heightAdjust, p2[2])
+		// 		face1.AddPoint(p3[0], p3[1]+heightAdjust, p3[2])
+		// 		// The vertices are wound counter-clockwise to produce an outward-facing normal.
+		// 		face1.Finished(FACE_REVERSE)
+		// 		obj.theFaces.AddFace(face1)
+
+		// 		// Create the second triangle for the quad (p1, p3, p4).
+		// 		face2 := NewFace(nil, clr, nil)
+		// 		face2.AddPoint(p1[0], p1[1]+heightAdjust, p1[2])
+		// 		face2.AddPoint(p3[0], p3[1]+heightAdjust, p3[2])
+		// 		face2.AddPoint(p4[0], p4[1]+heightAdjust, p4[2])
+		// 		face2.Finished(FACE_REVERSE)
+		// 		obj.theFaces.AddFace(face2)
+		// 	}
+		// }
+
+		for i := 0; i < subdivisions; i++ {
+			for j := 0; j < subdivisions; j++ {
+				// Get the four corner vertices of the current quad.
+				p1 := vertices[i][j]
+				p2 := vertices[i+1][j]
+				p3 := vertices[i+1][j+1]
+				p4 := vertices[i][j+1]
+
+				// Create the first triangle for the quad (p1, p2, p3).
+				face1 := NewFace(nil, clr, nil)
+
+				face1.AddPoint(p1[0], p1[1], p1[2])
+
+				face1.AddPoint(p2[0], p2[1], p2[2])
+
+				face1.AddPoint(p3[0], p3[1], p3[2])
+				face1.AddPoint(p4[0], p4[1], p4[2])
+
+				face1.Finished(FACE_REVERSE)
+				obj.theFaces.AddFace(face1)
+
+			}
+		}
+
+		obj.theFaces.SortFacesByDistance(NewVector3(0, 0, 0))
+
+	}
+
+	// Top face (+Y direction)
+	generateFace([3]float64{-w2, 0, -l2}, [3]float64{xWidth, 0, 0}, [3]float64{0, 0, yLength})
+
+	// Finalize the object by building its BSP tree.
+	obj.Finished(false, false)
+	return obj
+}
+
+func NewSubdividedPlaneHeightMapPerlin(xWidth,
+	yLength float64,
+	clr color.RGBA,
+	subdivisions int,
+	flatInX float64,
+	flatInY float64,
+) *Object3d {
+	obj := NewObject_3d()
+	w2, l2 := xWidth/2.0, yLength/2.0
+
+	if subdivisions < 1 {
+		subdivisions = 1
+	}
+	// Seed the random number generator for reproducibility.
+	randomSeed := rand.Int63()
+
+	per := perlin.NewPerlin(2, 3, 1, randomSeed)
+
+	// generateFace is a helper function that constructs one of the six faces of the cuboid.
+	// It takes an origin point and two vectors (u, v) that define the plane and dimensions
+	// of the face. It then creates a grid of vertices and generates triangles.
+	generateFace := func(origin, u, v [3]float64) {
+
+		// Create a grid of vertices for the current face.
+		vertices := make([][][3]float64, subdivisions+1)
+		for i := range vertices {
+			vertices[i] = make([][3]float64, subdivisions+1)
+			for j := range vertices[i] {
+				heightAdjust := 0.0
+				// atEdgeOfPlane := (i == 0 || i == subdivisions || j == 0 || j == subdivisions)
+				// if !atEdgeOfPlane {
+
+				ui := float64(i) / float64(subdivisions)
+				vj := float64(j) / float64(subdivisions)
+				x := origin[0] + ui*u[0] + vj*v[0]
+				z := origin[2] + ui*u[2] + vj*v[2]
+
+				// if x > -flatInX && x < flatInX && z > -flatInY && z < flatInY {
+				// 	// heightAdjust = 0.0 // Flat area in the middle
+
+				// 	heightAdjust = per.Noise2D(x/1000.0, z/1000.0) * 200.0
+				// } else {
+
+				distFromZero := math.Abs(z)
+
+				if distFromZero > 700.0 {
+					distFromZero = 700.0
+				}
+
+				// heightAdjust = per.Noise2D(x/1000.0, z/1000.0) * 700.0 // Perlin noise for height variation
+
+				heightAdjust = per.Noise2D(x/1000.0, z/1000.0) * distFromZero
+
+				// }
 
 				vertices[i][j] = [3]float64{
 					x,
@@ -466,13 +599,15 @@ func NewSubdividedPlaneHeightMap(xWidth,
 		// 	}
 		// }
 
+		obj.theFaces.SortFacesByDistance(NewVector3(0, 0, 0))
+
 	}
 
 	// Top face (+Y direction)
 	generateFace([3]float64{-w2, 0, -l2}, [3]float64{xWidth, 0, 0}, [3]float64{0, 0, yLength})
 
 	// Finalize the object by building its BSP tree.
-	obj.Finished(false, true)
+	obj.Finished(false, false)
 	return obj
 }
 
@@ -480,7 +615,7 @@ func NewSubdividedPlaneHeightMap(xWidth,
 // An icosphere is a sphere made of a mesh of triangles, which is more
 // uniform than a traditional UV sphere.
 func NewSphere(radius float64, subdivisions int, clr color.RGBA, finish bool) *Object3d {
-	obj := NewObject_3d(true)
+	obj := NewObject_3d()
 
 	// Define the 12 vertices of an Icosahedron.
 	// An icosahedron is a 20-sided polyhedron that forms the base of our sphere.
@@ -562,7 +697,7 @@ func NewSphere(radius float64, subdivisions int, clr color.RGBA, finish bool) *O
 // NewUVSphere creates a sphere based on latitude/longitude rings (sectors and stacks).
 // This structure allows for a perfectly straight horizontal stripe.
 func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object3d {
-	obj := NewObject_3d(true)
+	obj := NewObject_3d()
 
 	// We loop through stacks (latitude) and sectors (longitude).
 	vertices := make([][3]float64, 0)
@@ -633,7 +768,7 @@ func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.R
 }
 
 func NewUVSphere2(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object3d {
-	obj := NewObject_3d(true)
+	obj := NewObject_3d()
 
 	vertices := make([][3]float64, 0)
 	for i := 0; i <= stacks; i++ {
@@ -726,10 +861,10 @@ func NewUVSphere2(radius float64, sectors, stacks int, bodyClr, stripeClr color.
 func NewCylinder(radius, height float64, segments int, clr color.RGBA) *Object3d {
 	// A cylinder must have at least 3 segments to form a valid polygonal base.
 	if segments < 3 {
-		return NewObject_3d(true) // Return an empty object if segments are insufficient.
+		return NewObject_3d() // Return an empty object if segments are insufficient.
 	}
 
-	obj := NewObject_3d(true)
+	obj := NewObject_3d()
 	topFace := NewFace(nil, clr, nil)
 	baseFace := NewFace(nil, clr, nil)
 
@@ -817,10 +952,10 @@ func NewCylinder(radius, height float64, segments int, clr color.RGBA) *Object3d
 func NewRing(outerRadius, innerRadius, height float64, segments int, clr color.RGBA, finish bool) *Object3d {
 	// A ring must have at least 3 segments and the outer radius must be larger than the inner.
 	if segments < 3 || outerRadius <= innerRadius {
-		return NewObject_3d(true) // Return an empty object if parameters are invalid.
+		return NewObject_3d() // Return an empty object if parameters are invalid.
 	}
 
-	obj := NewObject_3d(true)
+	obj := NewObject_3d()
 
 	// --- 1. Generate Vertices ---
 

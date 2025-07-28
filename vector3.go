@@ -60,3 +60,11 @@ func (v *Vector3) Copy() *Vector3 {
 		W: v.W,
 	}
 }
+
+// DistanceTo
+func (v *Vector3) DistanceTo(other *Vector3) float64 {
+	dx := v.X - other.X
+	dy := v.Y - other.Y
+	dz := v.Z - other.Z
+	return math.Sqrt(dx*dx + dy*dy + dz*dz)
+}

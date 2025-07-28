@@ -28,7 +28,7 @@ type Point struct {
 	X, Y float32
 }
 
-const nearPlaneZ = 25
+const nearPlaneZ = 10
 const conversionFactor = 700
 
 // NewBspNode creates a new BSP node.

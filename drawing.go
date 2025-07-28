@@ -8,6 +8,11 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
+const (
+	MaxPolygonVertices = 50000
+	antiAlias          = false
+)
+
 var polygonBuffer struct {
 	vertices []ebiten.Vertex
 	indices  []uint16
@@ -24,14 +29,42 @@ func init() {
 }
 
 type PolygonBatcher struct {
+	// vertices []ebiten.Vertex
+	// indices  []uint16
+	batches      []*PolygonBatch
+	currentBatch *PolygonBatch
+}
+
+type PolygonBatch struct {
 	vertices []ebiten.Vertex
 	indices  []uint16
 }
 
 func NewPolygonBatcher(initialCap int) *PolygonBatcher {
+	currentBatch := PolygonBatch{
+		vertices: make([]ebiten.Vertex, 0, MaxPolygonVertices),
+		indices:  make([]uint16, 0, MaxPolygonVertices*6),
+	}
+
+	batches := make([]*PolygonBatch, 0, 10) // Start with a few batches
+	batches = append(batches, &currentBatch)
 	return &PolygonBatcher{
-		vertices: make([]ebiten.Vertex, 0, initialCap*4), // Guessing 4 vertices per polygon on avg
-		indices:  make([]uint16, 0, initialCap*6),        // Guessing 6 indices per polygon on avg
+		// vertices: make([]ebiten.Vertex, 0, initialCap*4), // Guessing 4 vertices per polygon on avg
+		// indices:  make([]uint16, 0, initialCap*6),        // Guessing 6 indices per polygon on avg
+		batches:      batches,
+		currentBatch: &currentBatch,
+	}
+}
+
+// add
+func (b *PolygonBatcher) AddBatchIfNeeded() {
+	if len(b.currentBatch.vertices) > MaxPolygonVertices {
+		// If the current batch is full, start a new one.
+		b.currentBatch = &PolygonBatch{
+			vertices: make([]ebiten.Vertex, 0, MaxPolygonVertices),
+			indices:  make([]uint16, 0, MaxPolygonVertices*6),
+		}
+		b.batches = append(b.batches, b.currentBatch)
 	}
 }
 
@@ -41,8 +74,10 @@ func (b *PolygonBatcher) AddPolygon(xp, yp []float32, clr color.RGBA) {
 		return
 	}
 
+	b.AddBatchIfNeeded()
+
 	// This offset is crucial! It's the starting index for the new vertices.
-	vertexOffset := uint16(len(b.vertices))
+	vertexOffset := uint16(len(b.currentBatch.vertices))
 
 	cr := float32(clr.R) / 255
 	cg := float32(clr.G) / 255
@@ -61,12 +96,12 @@ func (b *PolygonBatcher) AddPolygon(xp, yp []float32, clr color.RGBA) {
 			ColorB: cb,
 			ColorA: ca,
 		}
-		b.vertices = append(b.vertices, v)
+		b.currentBatch.vertices = append(b.currentBatch.vertices, v)
 	}
 
 	// Add the new indices, making sure to apply the vertexOffset
 	for i := 2; i < len(xp); i++ {
-		b.indices = append(b.indices,
+		b.currentBatch.indices = append(b.currentBatch.indices,
 			vertexOffset,             // First vertex of this polygon
 			vertexOffset+uint16(i-1), // Previous vertex
 			vertexOffset+uint16(i),   // Current vertex
@@ -76,20 +111,30 @@ func (b *PolygonBatcher) AddPolygon(xp, yp []float32, clr color.RGBA) {
 
 // Draw sends the entire batch of polygons to the GPU in a single draw call.
 func (b *PolygonBatcher) Draw(screen *ebiten.Image, whiteSub *ebiten.Image) {
-	// Don't do anything if there's no geometry to draw.
-	if len(b.vertices) == 0 {
-		return
+
+	for _, batch := range b.batches {
+		// Don't do anything if there's no geometry to draw.
+		if len(batch.vertices) == 0 {
+			return
+		}
+
+		op := &ebiten.DrawTrianglesOptions{
+			AntiAlias: antiAlias,
+		}
+
+		screen.DrawTriangles(batch.vertices, batch.indices, whiteSub, op)
+
+		// Reset slices for the next frame, but keep the allocated memory.
+		batch.vertices = batch.vertices[:0]
+		batch.indices = batch.indices[:0]
 	}
 
-	op := &ebiten.DrawTrianglesOptions{
-		AntiAlias: true,
+	b.currentBatch = &PolygonBatch{
+		vertices: make([]ebiten.Vertex, 0, MaxPolygonVertices),
+		indices:  make([]uint16, 0, MaxPolygonVertices*6),
 	}
+	b.batches = []*PolygonBatch{b.currentBatch}
 
-	screen.DrawTriangles(b.vertices, b.indices, whiteSub, op)
-
-	// Reset slices for the next frame, but keep the allocated memory. ✨
-	b.vertices = b.vertices[:0]
-	b.indices = b.indices[:0]
 }
 
 func (b *PolygonBatcher) AddPolygonOutline(xp, yp []float32, strokeWidth float32, clr color.RGBA) {
@@ -97,8 +142,10 @@ func (b *PolygonBatcher) AddPolygonOutline(xp, yp []float32, strokeWidth float32
 		return
 	}
 
+	b.AddBatchIfNeeded()
+
 	// This offset is the starting index for the vertices we are about to add.
-	vertexOffset := len(b.vertices)
+	vertexOffset := len(b.currentBatch.vertices)
 
 	var path vector.Path
 	path.MoveTo(xp[0], yp[0])
@@ -114,17 +161,17 @@ func (b *PolygonBatcher) AddPolygonOutline(xp, yp []float32, strokeWidth float32
 
 	// Append the new vertices and indices directly to the batcher's slices.
 	// This is the core of the operation.
-	b.vertices, b.indices = path.AppendVerticesAndIndicesForStroke(b.vertices, b.indices, strokeOp)
+	b.currentBatch.vertices, b.currentBatch.indices = path.AppendVerticesAndIndicesForStroke(b.currentBatch.vertices, b.currentBatch.indices, strokeOp)
 
 	// Now, color only the vertices we just added.
 	cr, cg, cb, ca := float32(clr.R)/255, float32(clr.G)/255, float32(clr.B)/255, float32(clr.A)/255
-	for i := vertexOffset; i < len(b.vertices); i++ {
-		b.vertices[i].ColorR = cr
-		b.vertices[i].ColorG = cg
-		b.vertices[i].ColorB = cb
-		b.vertices[i].ColorA = ca
-		b.vertices[i].SrcX = 1
-		b.vertices[i].SrcY = 1
+	for i := vertexOffset; i < len(b.currentBatch.vertices); i++ {
+		b.currentBatch.vertices[i].ColorR = cr
+		b.currentBatch.vertices[i].ColorG = cg
+		b.currentBatch.vertices[i].ColorB = cb
+		b.currentBatch.vertices[i].ColorA = ca
+		b.currentBatch.vertices[i].SrcX = 1
+		b.currentBatch.vertices[i].SrcY = 1
 	}
 }
 
@@ -135,8 +182,10 @@ func (b *PolygonBatcher) AddPolygonAndOutline(xp, yp []float32, fillClr, strokeC
 		return // Need at least 3 vertices for a polygon.
 	}
 
+	b.AddBatchIfNeeded()
+
 	// --- 1. Add the fill geometry ---
-	fillVertexOffset := uint16(len(b.vertices))
+	fillVertexOffset := uint16(len(b.currentBatch.vertices))
 
 	// Pre-calculate fill color components to avoid division in the loop.
 	fr, fg, fb, fa := float32(fillClr.R)/255, float32(fillClr.G)/255, float32(fillClr.B)/255, float32(fillClr.A)/255
@@ -152,12 +201,12 @@ func (b *PolygonBatcher) AddPolygonAndOutline(xp, yp []float32, fillClr, strokeC
 			ColorB: fb,
 			ColorA: fa,
 		}
-		b.vertices = append(b.vertices, v)
+		b.currentBatch.vertices = append(b.currentBatch.vertices, v)
 	}
 
 	// Triangulate the polygon using a simple fan triangulation.
 	for i := 2; i < len(xp); i++ {
-		b.indices = append(b.indices,
+		b.currentBatch.indices = append(b.currentBatch.indices,
 			fillVertexOffset,             // First vertex
 			fillVertexOffset+uint16(i-1), // Previous vertex
 			fillVertexOffset+uint16(i),   // Current vertex
@@ -165,7 +214,7 @@ func (b *PolygonBatcher) AddPolygonAndOutline(xp, yp []float32, fillClr, strokeC
 	}
 
 	// --- 2. Add the stroke geometry ---
-	strokeVertexOffset := len(b.vertices)
+	strokeVertexOffset := len(b.currentBatch.vertices)
 
 	var path vector.Path
 	path.MoveTo(xp[0], yp[0])
@@ -180,18 +229,18 @@ func (b *PolygonBatcher) AddPolygonAndOutline(xp, yp []float32, fillClr, strokeC
 	}
 
 	// `AppendVerticesAndIndicesForStroke` efficiently generates the outline mesh.
-	b.vertices, b.indices = path.AppendVerticesAndIndicesForStroke(b.vertices, b.indices, strokeOp)
+	b.currentBatch.vertices, b.currentBatch.indices = path.AppendVerticesAndIndicesForStroke(b.currentBatch.vertices, b.currentBatch.indices, strokeOp)
 
 	// Pre-calculate stroke color components.
 	sr, sg, sb, sa := float32(strokeClr.R)/255, float32(strokeClr.G)/255, float32(strokeClr.B)/255, float32(strokeClr.A)/255
 
 	// Color only the new vertices added for the stroke.
-	for i := strokeVertexOffset; i < len(b.vertices); i++ {
-		b.vertices[i].ColorR = sr
-		b.vertices[i].ColorG = sg
-		b.vertices[i].ColorB = sb
-		b.vertices[i].ColorA = sa
-		b.vertices[i].SrcX = 1
-		b.vertices[i].SrcY = 1
+	for i := strokeVertexOffset; i < len(b.currentBatch.vertices); i++ {
+		b.currentBatch.vertices[i].ColorR = sr
+		b.currentBatch.vertices[i].ColorG = sg
+		b.currentBatch.vertices[i].ColorB = sb
+		b.currentBatch.vertices[i].ColorA = sa
+		b.currentBatch.vertices[i].SrcX = 1
+		b.currentBatch.vertices[i].SrcY = 1
 	}
 }
