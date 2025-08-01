@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"math"
-	"math/rand"
 	"os"
 	"strconv"
 	"strings"
@@ -37,8 +36,22 @@ type Object3d struct {
 	drawLinesOnly      bool
 
 	// for when not using BSP
-	faceIndicies   [][]int // Indices of the faces in the faceMesh
-	normalIndicies []int
+	faceIndicies     [][]int // Indices of the faces in the faceMesh
+	normalIndicies   []int
+	drawAllFaces     bool // If true, draw all faces regardless of visibility
+	dontDrawOutlines bool // If true, don't draw outlines of polygons
+}
+
+func (o *Object3d) SetDontDrawOutlines(dontDraw bool) {
+	o.dontDrawOutlines = dontDraw
+}
+
+func (o *Object3d) GetDontDrawOutlines() bool {
+	return o.dontDrawOutlines
+}
+
+func (o *Object3d) SetDrawAllFaces(draw bool) {
+	o.drawAllFaces = draw
 }
 
 func (o *Object3d) SetDrawLinesOnly(only bool) {
@@ -55,7 +68,8 @@ func (o *Object3d) PaintObject(batcher *PolygonBatcher, x, y int, lightingChange
 
 	} else {
 		if o.root != nil {
-			o.root.PaintWithShading(batcher, x, y, o.transFaceMesh.Points, o.transNormalMesh.Points, lightingChange, o.drawLinesOnly, screenWidth, screenHeight)
+			o.root.PaintWithShading(batcher, x, y, o.transFaceMesh.Points, o.transNormalMesh.Points, lightingChange, o.drawLinesOnly, screenWidth, screenHeight,
+				o.dontDrawOutlines)
 		}
 	}
 }
@@ -442,9 +456,9 @@ func NewObjectFromDXF(reader io.Reader, reverse int) (*Object3d, error) {
 		}
 
 		faceColor := color.RGBA{
-			R: uint8(rand.Intn(256)),
-			G: uint8(rand.Intn(256)),
-			B: uint8(rand.Intn(256)),
+			R: 100,
+			G: 100,
+			B: 0,
 			A: 255,
 		}
 		aFace := NewFace(nil, faceColor, nil)
@@ -454,19 +468,19 @@ func NewObjectFromDXF(reader io.Reader, reverse int) (*Object3d, error) {
 			if err != nil {
 				return nil, fmt.Errorf("error reading X coordinate for vertex %d: %w", c, err)
 			}
-			scanner.Scan() // Skip line
+			scanner.Scan()
 
 			y, err := readFloatLine()
 			if err != nil {
 				return nil, fmt.Errorf("error reading Y coordinate for vertex %d: %w", c, err)
 			}
-			scanner.Scan() // Skip line
+			scanner.Scan()
 
 			z, err := readFloatLine()
 			if err != nil {
 				return nil, fmt.Errorf("error reading Z coordinate for vertex %d: %w", c, err)
 			}
-			scanner.Scan() // Skip line
+			scanner.Scan()
 
 			aFace.AddPoint(x, y, z)
 		}
@@ -561,9 +575,12 @@ func (o *Object3d) paintWithoutBSP(batcher *PolygonBatcher, x, y int, screenHeig
 func (o *Object3d) paintFace(batcher *PolygonBatcher, x, y int, points [][]float64, normal []float64, screenWidth, screenHeight float32, face *Face) {
 
 	firstPoint := points[0]
-	where := normal[0]*firstPoint[0] +
-		normal[1]*firstPoint[1] +
-		normal[2]*firstPoint[2]
+	where := 1.0
+	if !o.drawAllFaces {
+		where = normal[0]*firstPoint[0] +
+			normal[1]*firstPoint[1] +
+			normal[2]*firstPoint[2]
+	}
 
 	if where > 0 { // Facing the camera
 		o.paintFace2(batcher,
@@ -678,4 +695,15 @@ func getColor(
 	polyColor = color.RGBA{R: uint8(r1), G: uint8(g1), B: uint8(b1), A: polyColor.A}
 
 	return polyColor
+}
+func (o *Object3d) ScaleAllPoints(scale float64) {
+	if o.faceMesh == nil || o.faceMesh.Points == nil {
+		return
+	}
+
+	for i := range o.faceMesh.Points.ThisMatrix {
+		o.faceMesh.Points.ThisMatrix[i][0] *= scale
+		o.faceMesh.Points.ThisMatrix[i][1] *= scale
+		o.faceMesh.Points.ThisMatrix[i][2] *= scale
+	}
 }

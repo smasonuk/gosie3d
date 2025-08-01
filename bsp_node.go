@@ -51,12 +51,12 @@ func NewBspNode(facePoints [][]float64, faceNormal *Vector3, faceColor color.RGB
 }
 
 // PaintWithoutShading paints the BSP tree without lighting effects.
-func (b *BspNode) PaintWithoutShading(batcher *PolygonBatcher, x, y int, transPoints *Matrix, transNormals *Matrix, linesOnly bool, screenWidth, screenHeight float32) {
-	b.PaintWithShading(batcher, x, y, transPoints, transNormals, false, linesOnly, screenWidth, screenHeight)
+func (b *BspNode) PaintWithoutShading(batcher *PolygonBatcher, x, y int, transPoints *Matrix, transNormals *Matrix, linesOnly bool, screenWidth, screenHeight float32, dontDrawOutlines bool) {
+	b.PaintWithShading(batcher, x, y, transPoints, transNormals, false, linesOnly, screenWidth, screenHeight, dontDrawOutlines)
 }
 
 // PaintWithShading recursively traverses the BSP tree and paints the polygons.
-func (b *BspNode) PaintWithShading(batcher *PolygonBatcher, x, y int, transPoints *Matrix, transNormals *Matrix, doShading bool, linesOnly bool, screenWidth, screenHeight float32) {
+func (b *BspNode) PaintWithShading(batcher *PolygonBatcher, x, y int, transPoints *Matrix, transNormals *Matrix, doShading bool, linesOnly bool, screenWidth, screenHeight float32, dontDrawOutlines bool) {
 	if len(b.facePointIndices) == 0 {
 		return
 	}
@@ -71,23 +71,23 @@ func (b *BspNode) PaintWithShading(batcher *PolygonBatcher, x, y int, transPoint
 
 	if where <= 0 { // Facing away from the camera
 		if b.Left != nil {
-			b.Left.PaintWithShading(batcher, x, y, transPoints, transNormals, doShading, linesOnly, screenWidth, screenHeight)
+			b.Left.PaintWithShading(batcher, x, y, transPoints, transNormals, doShading, linesOnly, screenWidth, screenHeight, dontDrawOutlines)
 		}
 		if b.Right != nil {
-			b.Right.PaintWithShading(batcher, x, y, transPoints, transNormals, doShading, linesOnly, screenWidth, screenHeight)
+			b.Right.PaintWithShading(batcher, x, y, transPoints, transNormals, doShading, linesOnly, screenWidth, screenHeight, dontDrawOutlines)
 		}
 	} else { // Facing towards the camera
 		if b.Right != nil {
-			b.Right.PaintWithShading(batcher, x, y, transPoints, transNormals, doShading, linesOnly, screenWidth, screenHeight)
+			b.Right.PaintWithShading(batcher, x, y, transPoints, transNormals, doShading, linesOnly, screenWidth, screenHeight, dontDrawOutlines)
 		}
 
-		shouldReturn := b.paintPoly(batcher, x, y, transPoints, transNormals, doShading, firstTransformedPoint, transformedNormal, linesOnly, screenWidth, screenHeight)
+		shouldReturn := b.paintPoly(batcher, x, y, transPoints, transNormals, doShading, firstTransformedPoint, transformedNormal, linesOnly, screenWidth, screenHeight, dontDrawOutlines)
 		if shouldReturn {
 			return // Z-clipping occurred, no need to paint left side
 		}
 
 		if b.Left != nil {
-			b.Left.PaintWithShading(batcher, x, y, transPoints, transNormals, doShading, linesOnly, screenWidth, screenHeight)
+			b.Left.PaintWithShading(batcher, x, y, transPoints, transNormals, doShading, linesOnly, screenWidth, screenHeight, dontDrawOutlines)
 		}
 	}
 }
@@ -154,6 +154,7 @@ func (b *BspNode) paintPoly(
 	transformedNormal []float64,
 	linesOnly bool,
 	screenWidth, screenHeight float32,
+	dontDrawwOutlines bool,
 ) bool {
 
 	initial3DPoints := b.pointsToUse[:0] // Reuse the slice to avoid allocation
@@ -199,13 +200,18 @@ func (b *BspNode) paintPoly(
 	}
 
 	if !linesOnly {
-		black := color.RGBA{R: 100, G: 100, B: 100, A: 25}
-		batcher.AddPolygonAndOutline(finalScreenPointsX, finalScreenPointsY, polyColor, black, 1.0)
-
+		if dontDrawwOutlines {
+			batcher.AddPolygon(finalScreenPointsX, finalScreenPointsY, polyColor)
+		} else {
+			black := color.RGBA{R: 100, G: 100, B: 100, A: 25}
+			batcher.AddPolygonAndOutline(finalScreenPointsX, finalScreenPointsY, polyColor, black, 1.0)
+		}
 	} else {
+
 		black := color.RGBA{R: 0, G: 0, B: 0, A: 255}
 		// batcher.AddPolygonOutline(finalScreenPointsX, finalScreenPointsY, 1, polyColor)
 		batcher.AddPolygonAndOutline(finalScreenPointsX, finalScreenPointsY, black, polyColor, 1.0)
+
 	}
 
 	return false

@@ -287,7 +287,7 @@ func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdi
 	return obj
 }
 
-func gen(xWidth, yLength float64, clr color.RGBA, subdivisions int) *Object3d {
+func gen(xWidth, yLength float64, clr color.RGBA, subdivisions int, useTriangles bool) *Object3d {
 	obj := NewObject_3d()
 	w2, l2 := xWidth/2.0, yLength/2.0
 
@@ -324,22 +324,35 @@ func gen(xWidth, yLength float64, clr color.RGBA, subdivisions int) *Object3d {
 				p3 := vertices[i+1][j+1]
 				p4 := vertices[i][j+1]
 
-				// Create the first triangle for the quad (p1, p2, p3).
-				face1 := NewFace(nil, clr, nil)
-				face1.AddPoint(p1[0], p1[1], p1[2])
-				face1.AddPoint(p2[0], p2[1], p2[2])
-				face1.AddPoint(p3[0], p3[1], p3[2])
-				// The vertices are wound counter-clockwise to produce an outward-facing normal.
-				face1.Finished(FACE_REVERSE)
-				obj.theFaces.AddFace(face1)
+				if useTriangles {
+					// Create the first triangle for the quad (p1, p2, p3).
+					face1 := NewFace(nil, clr, nil)
+					face1.AddPoint(p1[0], p1[1], p1[2])
+					face1.AddPoint(p2[0], p2[1], p2[2])
+					face1.AddPoint(p3[0], p3[1], p3[2])
+					// The vertices are wound counter-clockwise to produce an outward-facing normal.
+					face1.Finished(FACE_REVERSE)
+					obj.theFaces.AddFace(face1)
 
-				// Create the second triangle for the quad (p1, p3, p4).
-				face2 := NewFace(nil, clr, nil)
-				face2.AddPoint(p1[0], p1[1], p1[2])
-				face2.AddPoint(p3[0], p3[1], p3[2])
-				face2.AddPoint(p4[0], p4[1], p4[2])
-				face2.Finished(FACE_REVERSE)
-				obj.theFaces.AddFace(face2)
+					// Create the second triangle for the quad (p1, p3, p4).
+					face2 := NewFace(nil, clr, nil)
+					face2.AddPoint(p1[0], p1[1], p1[2])
+					face2.AddPoint(p3[0], p3[1], p3[2])
+					face2.AddPoint(p4[0], p4[1], p4[2])
+					face2.Finished(FACE_REVERSE)
+					obj.theFaces.AddFace(face2)
+
+				} else {
+					// Create the first triangle for the quad (p1, p2, p3).
+					face1 := NewFace(nil, clr, nil)
+					face1.AddPoint(p1[0], p1[1], p1[2])
+					face1.AddPoint(p2[0], p2[1], p2[2])
+					face1.AddPoint(p3[0], p3[1], p3[2])
+					face1.AddPoint(p4[0], p4[1], p4[2])
+					// The vertices are wound counter-clockwise to produce an outward-facing normal.
+					face1.Finished(FACE_REVERSE)
+					obj.theFaces.AddFace(face1)
+				}
 			}
 		}
 	}
@@ -350,8 +363,10 @@ func gen(xWidth, yLength float64, clr color.RGBA, subdivisions int) *Object3d {
 	return obj
 }
 
-func NewSubdividedPlane(xWidth, yLength float64, clr color.RGBA, subdivisions int) *Object3d {
-	obj := gen(xWidth, yLength, clr, subdivisions)
+func NewSubdividedPlane(xWidth, yLength float64, clr color.RGBA, subdivisions int, useTriangles bool) *Object3d {
+	obj := gen(xWidth, yLength, clr, subdivisions, useTriangles)
+
+	obj.SetDrawAllFaces(true)
 
 	// Finalize the object by building its BSP tree.
 	obj.Finished(false, false)
