@@ -29,7 +29,8 @@ type Point struct {
 }
 
 const nearPlaneZ = 10
-const conversionFactor = 700
+
+// const conversionFactor = 700
 
 // NewBspNode creates a new BSP node.
 func NewBspNode(facePoints [][]float64, faceNormal *Vector3, faceColor color.RGBA, pointIndices []int, normalIdx int) *BspNode {
@@ -169,14 +170,18 @@ func (b *BspNode) paintPoly(
 		return false
 	}
 
+	// cf := float64(screenWidth)
+
 	initialScreenPoints := make([]Point, len(pointsToUse))
 	for i, point := range pointsToUse {
 		// At this stage, point[2] (z) is guaranteed to be >= nearPlaneZ,
 		// so perspective division is safe.
 		z := float32(point[2])
 		initialScreenPoints[i] = Point{
-			X: float32((conversionFactor*point[0])/float64(z)) + float32(x),
-			Y: float32((conversionFactor*point[1])/float64(z)) + float32(y),
+			// X: float32((cf*point[0])/float64(z)) + float32(x),
+			// Y: float32((cf*point[1])/float64(z)) + float32(y),
+			X: convertToScreenX(float64(screenWidth), float64(screenHeight), point[0], float64(z)),
+			Y: convertToScreenY(float64(screenWidth), float64(screenHeight), point[1], float64(z)),
 		}
 	}
 
@@ -340,4 +345,14 @@ func clamp2(value, min, max int) int {
 // GetLength2 calculates the magnitude of a 3D vector.
 func GetLength2(v []float64) float64 {
 	return math.Sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
+}
+
+func convertToScreenX(width, height, xy, z float64) float32 {
+	width = width * 0.9
+	return float32(((width * xy) / z) + width/2.0)
+}
+
+func convertToScreenY(width, height, xy, z float64) float32 {
+	width = width * 0.9
+	return float32(((width * xy) / z) + height/2.0)
 }

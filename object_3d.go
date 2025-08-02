@@ -457,8 +457,8 @@ func NewObjectFromDXF(reader io.Reader, reverse int) (*Object3d, error) {
 
 		faceColor := color.RGBA{
 			R: 100,
-			G: 100,
-			B: 0,
+			G: 10,
+			B: 58,
 			A: 255,
 		}
 		aFace := NewFace(nil, faceColor, nil)
@@ -614,12 +614,16 @@ func (o *Object3d) paintFace2(
 
 	initialScreenPoints := make([]Point, len(pointsToUse))
 	for i, point := range pointsToUse {
+
+		// cf := float64(screenWidth)
 		// At this stage, point[2] (z) is guaranteed to be >= nearPlaneZ,
 		// so perspective division is safe.
 		z := float32(point[2])
 		initialScreenPoints[i] = Point{
-			X: float32((conversionFactor*point[0])/float64(z)) + float32(x),
-			Y: float32((conversionFactor*point[1])/float64(z)) + float32(y),
+			// X: float32((cf*point[0])/float64(z)) + float32(x),
+			// Y: float32((cf*point[1])/float64(z)) + float32(y),
+			X: convertToScreenX(float64(screenWidth), float64(screenHeight), point[0], float64(z)),
+			Y: convertToScreenY(float64(screenWidth), float64(screenHeight), point[1], float64(z)),
 		}
 	}
 
