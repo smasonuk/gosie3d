@@ -31,7 +31,7 @@ type World_3d struct {
 	batcher              *PolygonBatcher
 }
 
-func NewWorld_3d() *World_3d {
+func NewWorld3d() *World_3d {
 	return &World_3d{
 		currentCamera: -1,
 		batcher:       NewPolygonBatcher(5000),

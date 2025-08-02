@@ -59,6 +59,10 @@ func NewFace(pnts [][]float64, col color.RGBA, normal *Vector3) *Face {
 	return f
 }
 
+func (f *Face) SetColor(col color.RGBA) {
+	f.Col = col
+}
+
 func (f *Face) AddPoint(x, y, z float64) {
 	pnts := []float64{x, y, z, 1.0}
 	f.vecPnts = append(f.vecPnts, pnts)

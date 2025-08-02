@@ -166,7 +166,8 @@ func (o *Object3d) Clone() *Object3d {
 	return clone
 }
 
-func (o *Object3d) createFaceList(faces *FaceStore, newFaces *FaceMesh, newNormMesh *NormalMesh) {
+func (o *Object3d) CreateFaceList() {
+	faces, newFaces, newNormMesh := o.theFaces, o.transFaceMesh, o.transNormalMesh
 	for i := 0; i < faces.FaceCount(); i++ {
 		originalFace := faces.GetFace(i)
 		newFace, ind := newFaces.AddFace(originalFace)
@@ -187,7 +188,7 @@ func (o *Object3d) Finished(centerObject bool, useBspTree bool) {
 			o.root = o.createBspTree(o.theFaces, o.transFaceMesh, o.transNormalMesh)
 			o.canPaintWithoutBSP = false
 		} else {
-			o.createFaceList(o.theFaces, o.transFaceMesh, o.transNormalMesh)
+			o.CreateFaceList()
 			o.canPaintWithoutBSP = true
 		}
 	}
@@ -572,6 +573,33 @@ func (o *Object3d) paintWithoutBSP(batcher *PolygonBatcher, x, y int, screenHeig
 	}
 }
 
+func (o *Object3d) FacesIntersectingLine(startLine, endLine *Point3d) []*Face {
+	faces := make([]*Face, 0, 5)
+	points := make([][]float64, 0, 10)
+	for i := 0; i < len(o.faceIndicies); i++ {
+		faceIndices := o.faceIndicies[i]
+		// normalIndex := o.normalIndicies[i]
+		facePointsInCameraSpace := points[:]
+		for _, index := range faceIndices {
+			point := o.transFaceMesh.Points.ThisMatrix[index]
+			facePointsInCameraSpace = append(facePointsInCameraSpace, point)
+		}
+
+		intersects := LineIntersectsPolygon(startLine, endLine, facePointsInCameraSpace)
+		if intersects {
+			// If the line intersects the polygon, add the face to the list.
+			face := o.theFaces.GetFace(i)
+			faces = append(faces, face)
+		}
+	}
+
+	if len(faces) == 0 {
+		return nil
+	}
+
+	return faces
+}
+
 func (o *Object3d) paintFace(batcher *PolygonBatcher, x, y int, points [][]float64, normal []float64, screenWidth, screenHeight float32, face *Face) {
 
 	firstPoint := points[0]
@@ -622,8 +650,8 @@ func (o *Object3d) paintFace2(
 		initialScreenPoints[i] = Point{
 			// X: float32((cf*point[0])/float64(z)) + float32(x),
 			// Y: float32((cf*point[1])/float64(z)) + float32(y),
-			X: convertToScreenX(float64(screenWidth), float64(screenHeight), point[0], float64(z)),
-			Y: convertToScreenY(float64(screenWidth), float64(screenHeight), point[1], float64(z)),
+			X: ConvertToScreenX(float64(screenWidth), float64(screenHeight), point[0], float64(z)),
+			Y: ConvertToScreenY(float64(screenWidth), float64(screenHeight), point[1], float64(z)),
 		}
 	}
 
@@ -710,4 +738,242 @@ func (o *Object3d) ScaleAllPoints(scale float64) {
 		o.faceMesh.Points.ThisMatrix[i][1] *= scale
 		o.faceMesh.Points.ThisMatrix[i][2] *= scale
 	}
+}
+
+// Represents a vertex with its color.
+type Vertex struct {
+	X, Y, Z float64
+	Color   color.RGBA
+}
+
+func NewObjectFromPLY(reader io.Reader, reverse int) (*Object3d, error) {
+	obj := NewObject_3d()
+	scanner := bufio.NewScanner(reader)
+
+	var vertexCount, faceCount int
+
+	// 1. Parse the header first
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Fields(line)
+		if len(parts) == 3 && parts[0] == "element" {
+			if parts[1] == "vertex" {
+				vertexCount, _ = strconv.Atoi(parts[2])
+			} else if parts[1] == "face" {
+				faceCount, _ = strconv.Atoi(parts[2])
+			}
+		}
+		if line == "end_header" {
+			break
+		}
+	}
+
+	// 2. Read all vertices and their colors
+	vertices := make([]Vertex, 0, vertexCount)
+	for i := 0; i < vertexCount; i++ {
+		scanner.Scan()
+		parts := strings.Fields(scanner.Text())
+		if len(parts) < 6 { // expecting x, y, z, r, g, b
+			return nil, fmt.Errorf("invalid vertex data on line %d", i)
+		}
+
+		x, _ := strconv.ParseFloat(parts[0], 64)
+		y, _ := strconv.ParseFloat(parts[1], 64)
+		z, _ := strconv.ParseFloat(parts[2], 64)
+		r, _ := strconv.ParseUint(parts[3], 10, 8)
+		g, _ := strconv.ParseUint(parts[4], 10, 8)
+		b, _ := strconv.ParseUint(parts[5], 10, 8)
+
+		vertices = append(vertices, Vertex{
+			X: x, Y: y, Z: z,
+			Color: color.RGBA{R: uint8(r), G: uint8(g), B: uint8(b), A: 255},
+		})
+	}
+
+	// 3. Read the face definitions and create faces using the vertices
+	for i := 0; i < faceCount; i++ {
+		scanner.Scan()
+		parts := strings.Fields(scanner.Text())
+
+		// parts[0] is the number of vertices in this face
+		numFaceVerts, _ := strconv.Atoi(parts[0])
+		if len(parts) != numFaceVerts+1 {
+			return nil, fmt.Errorf("invalid face data on line %d", i)
+		}
+
+		// We can average the vertex colors to get a face color.
+		var r, g, b uint32
+
+		aFace := NewFace(nil, color.RGBA{44, 2, 65, 255}, nil)
+
+		for j := 1; j <= numFaceVerts; j++ {
+			idx, _ := strconv.Atoi(parts[j])
+			vert := vertices[idx]
+			aFace.AddPoint(vert.X, vert.Y, vert.Z)
+			r += uint32(vert.Color.R)
+			g += uint32(vert.Color.G)
+			b += uint32(vert.Color.B)
+		}
+
+		// Set the average color for the face
+		// avgColor := color.RGBA{
+		// 	R: uint8(r / uint32(numFaceVerts)),
+		// 	G: uint8(g / uint32(numFaceVerts)),
+		// 	B: uint8(b / uint32(numFaceVerts)),
+		// 	A: 255,
+		// }
+		// aFace.SetColor(avgColor) // Assuming you have a method to set the color
+
+		aFace.Finished(reverse)
+		obj.theFaces.AddFace(aFace)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading from PLY source: %w", err)
+	}
+
+	obj.Finished(false, true)
+	return obj, nil
+}
+
+// A small epsilon value for floating-point comparisons to avoid precision errors.
+const epsilon = 1e-6
+
+//
+// --- Vector Helper Functions ---
+//
+
+// subtract calculates the vector from p2 to p1 (p1 - p2).
+func subtract(p1, p2 *Point3d) *Point3d {
+	return &Point3d{X: p1.X - p2.X, Y: p1.Y - p2.Y, Z: p1.Z - p2.Z}
+}
+
+// crossProduct calculates the cross product of two vectors.
+func crossProduct(v1, v2 *Point3d) *Point3d {
+	return &Point3d{
+		X: v1.Y*v2.Z - v1.Z*v2.Y,
+		Y: v1.Z*v2.X - v1.X*v2.Z,
+		Z: v1.X*v2.Y - v1.Y*v2.X,
+	}
+}
+
+// dotProduct calculates the dot product of two vectors.
+func dotProduct(v1, v2 *Point3d) float64 {
+	return v1.X*v2.X + v1.Y*v2.Y + v1.Z*v2.Z
+}
+
+// LineIntersectsPolygon determines if a line segment intersects with a 3D polygon.
+// The polygon is assumed to be planar and convex.
+func LineIntersectsPolygon(lineStart, lineEnd *Point3d, polygonPoints [][]float64) bool {
+	if len(polygonPoints) < 3 {
+		// A polygon must have at least 3 vertices.
+		return false
+	}
+
+	// 1. Define the plane of the polygon using the first three points.
+	// We need a point on the plane (p0) and the plane's normal vector.
+	p0 := NewPoint3d(polygonPoints[0][0], polygonPoints[0][1], polygonPoints[0][2])
+	p1 := NewPoint3d(polygonPoints[1][0], polygonPoints[1][1], polygonPoints[1][2])
+	p2 := NewPoint3d(polygonPoints[2][0], polygonPoints[2][1], polygonPoints[2][2])
+
+	// Create two vectors on the plane.
+	v1 := subtract(p1, p0)
+	v2 := subtract(p2, p0)
+
+	// The plane normal is the cross product of the two vectors.
+	planeNormal := crossProduct(v1, v2)
+
+	// 2. Calculate the intersection of the line and the plane.
+	// The line is represented as P = lineStart + t * lineDir
+	lineDir := subtract(lineEnd, lineStart)
+
+	// Check if the line is parallel to the plane.
+	dotNormalDir := dotProduct(planeNormal, lineDir)
+	if math.Abs(dotNormalDir) < epsilon {
+		return false // Line is parallel, no intersection.
+	}
+
+	// Calculate the 't' parameter for the line equation.
+	w := subtract(lineStart, p0)
+	t := -dotProduct(planeNormal, w) / dotNormalDir
+
+	// 3. Check if the intersection point is within the line segment.
+	// If t is not between 0 and 1, the intersection is outside the segment.
+	if t < 0.0-epsilon || t > 1.0+epsilon {
+		return false
+	}
+
+	// 4. Calculate the actual intersection point.
+	intersectionPoint := NewPoint3d(
+		lineStart.X+t*lineDir.X,
+		lineStart.Y+t*lineDir.Y,
+		lineStart.Z+t*lineDir.Z,
+	)
+
+	// 5. Check if the intersection point is inside the polygon.
+	return isPointInPolygon(intersectionPoint, polygonPoints, planeNormal)
+}
+
+// isPointInPolygon checks if a 3D point (known to be on the polygon's plane)
+// is inside the polygon's boundaries using a 2D projection and ray casting.
+func isPointInPolygon(point *Point3d, polygonPoints [][]float64, normal *Point3d) bool {
+	// Project the 3D polygon and the point to a 2D plane.
+	// We choose the plane based on the largest component of the normal vector
+	// to avoid a degenerate projection (i.e., the polygon projecting to a line).
+	absX := math.Abs(normal.X)
+	absY := math.Abs(normal.Y)
+	absZ := math.Abs(normal.Z)
+
+	var u, v int // Indices for the 2D coordinates (0=X, 1=Y, 2=Z)
+
+	if absX > absY && absX > absZ {
+		// Project to YZ plane (discarding X)
+		u, v = 1, 2
+	} else if absY > absX && absY > absZ {
+		// Project to XZ plane (discarding Y)
+		u, v = 0, 2
+	} else {
+		// Project to XY plane (discarding Z)
+		u, v = 0, 1
+	}
+
+	// Get the 2D coordinates of the intersection point.
+	point2D := []float64{getCoord(point, u), getCoord(point, v)}
+
+	// Apply the Ray Casting algorithm in 2D.
+	intersections := 0
+	numVertices := len(polygonPoints)
+	for i := 0; i < numVertices; i++ {
+		p1_3D := polygonPoints[i]
+		p2_3D := polygonPoints[(i+1)%numVertices]
+
+		// Get 2D coordinates of the edge's vertices.
+		p1_2D := []float64{p1_3D[u], p1_3D[v]}
+		p2_2D := []float64{p2_3D[u], p2_3D[v]}
+
+		// Check if the horizontal ray from the point intersects with the edge.
+		if (p1_2D[1] > point2D[1]) != (p2_2D[1] > point2D[1]) {
+			// Calculate the x-intersection of the line.
+			x_intersection := (p2_2D[0]-p1_2D[0])*(point2D[1]-p1_2D[1])/(p2_2D[1]-p1_2D[1]) + p1_2D[0]
+			if point2D[0] < x_intersection {
+				intersections++
+			}
+		}
+	}
+
+	// If the number of intersections is odd, the point is inside the polygon.
+	return intersections%2 == 1
+}
+
+// getCoord is a small helper to get a coordinate by its index (0=X, 1=Y, 2=Z).
+func getCoord(p *Point3d, index int) float64 {
+	switch index {
+	case 0:
+		return p.X
+	case 1:
+		return p.Y
+	case 2:
+		return p.Z
+	}
+	return 0
 }

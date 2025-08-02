@@ -16,7 +16,7 @@ type Game struct {
 func NewGame() *Game {
 	g := &Game{}
 	log.Println("Initializing World...")
-	g.world = NewWorld_3d()
+	g.world = NewWorld3d()
 	theCamera := NewCamera(0, 0, 0, 0, 0, 0)
 	g.world.AddCamera(theCamera, 0, 0, 0)
 

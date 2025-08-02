@@ -180,8 +180,8 @@ func (b *BspNode) paintPoly(
 		initialScreenPoints[i] = Point{
 			// X: float32((cf*point[0])/float64(z)) + float32(x),
 			// Y: float32((cf*point[1])/float64(z)) + float32(y),
-			X: convertToScreenX(float64(screenWidth), float64(screenHeight), point[0], float64(z)),
-			Y: convertToScreenY(float64(screenWidth), float64(screenHeight), point[1], float64(z)),
+			X: ConvertToScreenX(float64(screenWidth), float64(screenHeight), point[0], float64(z)),
+			Y: ConvertToScreenY(float64(screenWidth), float64(screenHeight), point[1], float64(z)),
 		}
 	}
 
@@ -347,12 +347,51 @@ func GetLength2(v []float64) float64 {
 	return math.Sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
 }
 
-func convertToScreenX(width, height, xy, z float64) float32 {
-	width = width * 0.9
-	return float32(((width * xy) / z) + width/2.0)
+func ConvertToScreenX(width, height, x, z float64) float32 {
+
+	return float32(((700 * x) / z) + width/2.0)
 }
 
-func convertToScreenY(width, height, xy, z float64) float32 {
-	width = width * 0.9
-	return float32(((width * xy) / z) + height/2.0)
+func ConvertToScreenY(width, height, y, z float64) float32 {
+
+	return float32(((700 * y) / z) + height/2.0)
+}
+
+// func ConvertToScreenX(width, height, x, z float64) float32 {
+// 	width = width * 0.7
+// 	return float32(((width * x) / z) + width/2.0)
+// }
+
+// func ConvertToScreenY(width, height, y, z float64) float32 {
+// 	width = width * 0.7
+// 	return float32(((width * y) / z) + height/2.0)
+// }
+
+// func ConvertFromScreenX(width, height, x, z float64) float32 {
+// 	width = width * 0.7
+// 	return float32((x - width/2.0) * z / width)
+// }
+
+//	func ConvertFromScreenY(width, height, y, z float64) float32 {
+//		width = width * 0.7
+//		return float32((y - height/2.0) * z / width)
+//	}
+func ConvertFromScreen(width, height, screenX, screenY, z float64) (x, y float64) {
+	// This is the projection width you used in the original conversion
+	projWidth := 700.0
+
+	// Reverse the formula for X
+	// Original: screenX = ((projWidth * x) / z) + width/2.0
+	// Solved for x: x = ((screenX - width/2.0) * z) / projWidth
+	x = ((screenX - width/2.0) * z) / projWidth
+
+	// Reverse the formula for Y
+	// Original: screenY = ((projWidth * y) / z) + height/2.0
+	// Solved for y: y = ((screenY - height/2.0) * z) / projWidth
+	y = ((screenY - height/2.0) * z) / projWidth
+
+	// We choose z=1.0 to form a direction vector away from the camera's origin.
+	// z = z
+
+	return x, y
 }
