@@ -51,6 +51,14 @@ func NewBspNode(facePoints [][]float64, faceNormal *Vector3, faceColor color.RGB
 	return b
 }
 
+// set color
+func (b *BspNode) SetColor(r, g, b1, a uint8) {
+	b.colRed = r
+	b.colGreen = g
+	b.colBlue = b1
+	b.colAlpha = a
+}
+
 // PaintWithoutShading paints the BSP tree without lighting effects.
 func (b *BspNode) PaintWithoutShading(batcher *PolygonBatcher, x, y int, transPoints *Matrix, transNormals *Matrix, linesOnly bool, screenWidth, screenHeight float32, dontDrawOutlines bool) {
 	b.PaintWithShading(batcher, x, y, transPoints, transNormals, false, linesOnly, screenWidth, screenHeight, dontDrawOutlines)
@@ -201,7 +209,7 @@ func (b *BspNode) paintPoly(
 	polyColor := color.RGBA{R: b.colRed, G: b.colGreen, B: b.colBlue, A: b.colAlpha}
 	if shadePoly {
 		shadingRefPoint := verticesInCameraSpace.ThisMatrix[b.facePointIndices[0]]
-		polyColor = b.GetColor(shadingRefPoint, transformedNormal, polyColor)
+		polyColor = b.calcColor(shadingRefPoint, transformedNormal, polyColor)
 	}
 
 	if !linesOnly {
@@ -288,8 +296,8 @@ func clipAgainstEdge(subjectPolygon []Point, inside func(Point) bool, intersecti
 	return outputList
 }
 
-// GetColor calculates the color of a polygon based on simple lighting.
-func (b *BspNode) GetColor(
+// calcColor calculates the color of a polygon based on simple lighting.
+func (b *BspNode) calcColor(
 	firstTransformedPoint []float64,
 	transformedNormal []float64,
 	polyColor color.RGBA,
@@ -394,4 +402,23 @@ func ConvertFromScreen(width, height, screenX, screenY, z float64) (x, y float64
 	// z = z
 
 	return x, y
+}
+
+// average/midpoint of the polygon in 3d space
+
+func (b *BspNode) GetAveragePoint(transPoints *Matrix) (float64, float64, float64) {
+	if len(b.facePointIndices) == 0 {
+		return 0, 0, 0
+	}
+
+	sumX, sumY, sumZ := 0.0, 0.0, 0.0
+	for _, index := range b.facePointIndices {
+		point := transPoints.ThisMatrix[index]
+		sumX += point[0]
+		sumY += point[1]
+		sumZ += point[2]
+	}
+
+	count := float64(len(b.facePointIndices))
+	return sumX / count, sumY / count, sumZ / count
 }

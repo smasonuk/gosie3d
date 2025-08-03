@@ -9,7 +9,7 @@ import (
 	"github.com/aquilax/go-perlin"
 )
 
-func NewCube() *Object3d {
+func NewCube() *Model {
 	obj := NewObject_3d()
 	s := 40.0 // size
 
@@ -68,7 +68,7 @@ type Point2D struct {
 
 // Extrude creates a 3D object by extruding a 2D shape defined by a set of
 // vertices. It correctly handles vertices supplied in any order.
-func Extrude(xp []float64, zp []float64, height float64, clr color.RGBA) *Object3d {
+func Extrude(xp []float64, zp []float64, height float64, clr color.RGBA) *Model {
 	// --- 1. Sanitize and Sort the 2D Points ---
 
 	// Extract unique points from the input slices to avoid duplicates.
@@ -143,7 +143,7 @@ func Extrude(xp []float64, zp []float64, height float64, clr color.RGBA) *Object
 
 // NewRectangle creates a new Object_3d in the shape of a cuboid (a 3D rectangle).
 // It's centered at the origin and has the specified dimensions and color.
-func NewRectangle(width, height, length float64, clr color.RGBA) *Object3d {
+func NewRectangle(width, height, length float64, clr color.RGBA) *Model {
 	// create a new, empty object to populate.
 	obj := NewObject_3d()
 
@@ -203,7 +203,7 @@ func NewRectangle(width, height, length float64, clr color.RGBA) *Object3d {
 //
 //	of 2 will split a face into a 2x2 grid of quads (8 triangles). A value of 1
 //	will result in one quad per face (2 triangles).
-func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdivisions int) *Object3d {
+func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdivisions int) *Model {
 	obj := NewObject_3d()
 	w2, h2, l2 := width/2.0, height/2.0, length/2.0
 
@@ -287,7 +287,7 @@ func NewSubdividedRectangle(width, height, length float64, clr color.RGBA, subdi
 	return obj
 }
 
-func gen(xWidth, yLength float64, clr color.RGBA, subdivisions int, useTriangles bool) *Object3d {
+func gen(xWidth, yLength float64, clr color.RGBA, subdivisions int, useTriangles bool) *Model {
 	obj := NewObject_3d()
 	w2, l2 := xWidth/2.0, yLength/2.0
 
@@ -363,7 +363,7 @@ func gen(xWidth, yLength float64, clr color.RGBA, subdivisions int, useTriangles
 	return obj
 }
 
-func NewSubdividedPlane(xWidth, yLength float64, clr color.RGBA, subdivisions int, useTriangles bool) *Object3d {
+func NewSubdividedPlane(xWidth, yLength float64, clr color.RGBA, subdivisions int, useTriangles bool) *Model {
 	obj := gen(xWidth, yLength, clr, subdivisions, useTriangles)
 
 	obj.SetDrawAllFaces(true)
@@ -379,7 +379,7 @@ func NewSubdividedPlaneHeightMap(xWidth,
 	subdivisions int,
 	flatInX float64,
 	flatInY float64,
-) *Object3d {
+) *Model {
 	obj := NewObject_3d()
 	w2, l2 := xWidth/2.0, yLength/2.0
 
@@ -502,7 +502,7 @@ func NewSubdividedPlaneHeightMapPerlin(xWidth,
 	subdivisions int,
 	flatInX float64,
 	flatInY float64,
-) *Object3d {
+) *Model {
 	obj := NewObject_3d()
 	w2, l2 := xWidth/2.0, yLength/2.0
 
@@ -629,7 +629,7 @@ func NewSubdividedPlaneHeightMapPerlin(xWidth,
 // NewSphere creates a new Object_3d in the shape of an icosphere.
 // An icosphere is a sphere made of a mesh of triangles, which is more
 // uniform than a traditional UV sphere.
-func NewSphere(radius float64, subdivisions int, clr color.RGBA, finish bool) *Object3d {
+func NewSphere(radius float64, subdivisions int, clr color.RGBA, finish bool) *Model {
 	obj := NewObject_3d()
 
 	// Define the 12 vertices of an Icosahedron.
@@ -711,7 +711,7 @@ func NewSphere(radius float64, subdivisions int, clr color.RGBA, finish bool) *O
 
 // NewUVSphere creates a sphere based on latitude/longitude rings (sectors and stacks).
 // This structure allows for a perfectly straight horizontal stripe.
-func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object3d {
+func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Model {
 	obj := NewObject_3d()
 
 	// We loop through stacks (latitude) and sectors (longitude).
@@ -782,7 +782,7 @@ func NewUVSphere(radius float64, sectors, stacks int, bodyClr, stripeClr color.R
 	return obj
 }
 
-func NewUVSphere2(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Object3d {
+func NewUVSphere2(radius float64, sectors, stacks int, bodyClr, stripeClr color.RGBA, stripeStacks int) *Model {
 	obj := NewObject_3d()
 
 	vertices := make([][3]float64, 0)
@@ -873,7 +873,7 @@ func NewUVSphere2(radius float64, sectors, stacks int, bodyClr, stripeClr color.
 // The cylinder is centered at the origin, and its height extends along the Y-axis.
 // 'segments' controls how many rectangular faces are used to approximate the curved surface;
 // a higher number results in a smoother cylinder.
-func NewCylinder(radius, height float64, segments int, clr color.RGBA) *Object3d {
+func NewCylinder(radius, height float64, segments int, clr color.RGBA) *Model {
 	// A cylinder must have at least 3 segments to form a valid polygonal base.
 	if segments < 3 {
 		return NewObject_3d() // Return an empty object if segments are insufficient.
@@ -964,7 +964,7 @@ func NewCylinder(radius, height float64, segments int, clr color.RGBA) *Object3d
 // The ring is initially built with its base at Y=0 and is then centered at the origin.
 // 'segments' controls the smoothness of the curved surfaces.
 // 'outerRadius' and 'innerRadius' define the ring's thickness.
-func NewRing(outerRadius, innerRadius, height float64, segments int, clr color.RGBA, finish bool) *Object3d {
+func NewRing(outerRadius, innerRadius, height float64, segments int, clr color.RGBA, finish bool) *Model {
 	// A ring must have at least 3 segments and the outer radius must be larger than the inner.
 	if segments < 3 || outerRadius <= innerRadius {
 		return NewObject_3d() // Return an empty object if parameters are invalid.

@@ -17,8 +17,15 @@ func NewCamera(xp, yp, zp, xa, ya, za float64) *Camera {
 	x := NewRotationMatrix(ROTX, -xa)
 	y := NewRotationMatrix(ROTY, -ya)
 	z := NewRotationMatrix(ROTZ, -za)
+
+	sTransWorldToCamera := TransMatrix(-xp, -yp, -zp)
+
 	c.camMatrixRev = z.MultiplyBy(y)
 	c.camMatrixRev = c.camMatrixRev.MultiplyBy(x)
+	c.camMatrixRev = c.camMatrixRev.MultiplyBy(c.camMatrixRev.MultiplyBy(sTransWorldToCamera))
+
+	// sMat := sMatX.MultiplyBy(sMatY.MultiplyBy(sTransWorldToCamera))
+
 	c.cameraPosition = NewPoint3d(xp, yp, zp)
 	c.cameraAngle = NewVector3(xa, ya, za)
 
@@ -110,6 +117,16 @@ func (c *Camera) GetPosition() *Point3d {
 	}
 	return c.cameraPosition
 }
+
+// func (c *Camera) updatedCameraPositionMatrix() {
+// 	sTransWorldToCamera := TransMatrix(
+// 		-c.cameraPosition.X,
+// 		-c.cameraPosition.Y,
+// 		-c.cameraPosition.Z,
+// 	)
+
+// 	c.camMatrixRev = sTransWorldToCamera.MultiplyBy(c.camMatrixRev)
+// }
 
 func (c *Camera) SetCameraPosition(x, y, z float64) {
 	c.cameraPosition = NewPoint3d(x, y, z)

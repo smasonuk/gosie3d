@@ -6,9 +6,9 @@ import (
 )
 
 type Game struct {
-	world        *World_3d
+	world        *World
 	i, p         float64
-	cube         *Object3d
+	cube         *Model
 	lastX, lastY int
 	dragged      bool
 }

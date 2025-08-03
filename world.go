@@ -9,8 +9,8 @@ import (
 
 const UP_DIR = -1.0
 
-type World_3d struct {
-	objects               []*Object3d
+type World struct {
+	objects               []*Model
 	objXpos               []float64
 	objYpos               []float64
 	objZpos               []float64
@@ -19,26 +19,26 @@ type World_3d struct {
 	camYpos               []float64
 	camZpos               []float64
 	currentCamera         int
-	objectToDrawFirst     []*Object3d
+	objectToDrawFirst     []*Model
 	objectToDrawFirstXpos []float64
 	objectToDrawFirstYpos []float64
 	objectToDrawFirstZpos []float64
 	// draw last
-	objectToDrawLast     []*Object3d
+	objectToDrawLast     []*Model
 	objectToDrawLastXpos []float64
 	objectToDrawLastYpos []float64
 	objectToDrawLastZpos []float64
 	batcher              *PolygonBatcher
 }
 
-func NewWorld3d() *World_3d {
-	return &World_3d{
+func NewWorld3d() *World {
+	return &World{
 		currentCamera: -1,
 		batcher:       NewPolygonBatcher(5000),
 	}
 }
 
-func (w *World_3d) AddObject(obj *Object3d, x, y, z float64) {
+func (w *World) AddObject(obj *Model, x, y, z float64) {
 	w.objects = append(w.objects, obj)
 	w.objXpos = append(w.objXpos, x)
 	w.objYpos = append(w.objYpos, y)
@@ -46,7 +46,7 @@ func (w *World_3d) AddObject(obj *Object3d, x, y, z float64) {
 }
 
 // AddObjectDrawFirst
-func (w *World_3d) AddObjectDrawFirst(obj *Object3d, x, y, z float64) {
+func (w *World) AddObjectDrawFirst(obj *Model, x, y, z float64) {
 	w.objectToDrawFirst = append(w.objectToDrawFirst, obj)
 	w.objectToDrawFirstXpos = append(w.objectToDrawFirstXpos, x)
 	w.objectToDrawFirstYpos = append(w.objectToDrawFirstYpos, y)
@@ -54,14 +54,14 @@ func (w *World_3d) AddObjectDrawFirst(obj *Object3d, x, y, z float64) {
 }
 
 // AddObjectDrawLast
-func (w *World_3d) AddObjectDrawLast(obj *Object3d, x, y, z float64) {
+func (w *World) AddObjectDrawLast(obj *Model, x, y, z float64) {
 	w.objectToDrawLast = append(w.objectToDrawLast, obj)
 	w.objectToDrawLastXpos = append(w.objectToDrawLastXpos, x)
 	w.objectToDrawLastYpos = append(w.objectToDrawLastYpos, y)
 	w.objectToDrawLastZpos = append(w.objectToDrawLastZpos, z)
 }
 
-func (w *World_3d) AddCamera(c *Camera, x, y, z float64) {
+func (w *World) AddCamera(c *Camera, x, y, z float64) {
 	w.cameras = append(w.cameras, c)
 	w.camXpos = append(w.camXpos, x)
 	w.camYpos = append(w.camYpos, y)
@@ -69,7 +69,7 @@ func (w *World_3d) AddCamera(c *Camera, x, y, z float64) {
 	w.currentCamera = len(w.cameras) - 1
 }
 
-func paint(batcher *PolygonBatcher, xsize, ysize int, obj *Object3d, x, y, z float64, cam *Camera) {
+func paint(batcher *PolygonBatcher, xsize, ysize int, obj *Model, x, y, z float64, cam *Camera) {
 	objToWorld := TransMatrix(x, y, z)
 
 	objToCam := cam.camMatrixRev.MultiplyBy(objToWorld)
@@ -77,14 +77,14 @@ func paint(batcher *PolygonBatcher, xsize, ysize int, obj *Object3d, x, y, z flo
 	obj.PaintObject(batcher, xsize/2, ysize/2, true, float32(xsize), float32(ysize))
 }
 
-func distBetweenObjectAndCamera(obj *Object3d, cam *Camera) float64 {
+func distBetweenObjectAndCamera(obj *Model, cam *Camera) float64 {
 	objX, objY, objZ := obj.GetPosition().X, obj.GetPosition().Y, obj.GetPosition().Z
 	camX, camY, camZ := cam.GetPosition().X, cam.GetPosition().Y, cam.GetPosition().Z
 
 	return math.Sqrt(math.Pow(objX-camX, 2) + math.Pow(objY-camY, 2) + math.Pow(objZ-camZ, 2))
 }
 
-func draw(batcher *PolygonBatcher, xsize, ysize int, objects []*Object3d, cam *Camera) {
+func draw(batcher *PolygonBatcher, xsize, ysize int, objects []*Model, cam *Camera) {
 	// draw background objects
 	for _, obj := range objects {
 		objToWorld := TransMatrix(
@@ -99,7 +99,7 @@ func draw(batcher *PolygonBatcher, xsize, ysize int, objects []*Object3d, cam *C
 
 }
 
-func sortObjects(backgroundObjects []*Object3d, cam *Camera) {
+func sortObjects(backgroundObjects []*Model, cam *Camera) {
 	sort.Slice(backgroundObjects, func(i, j int) bool {
 		distanceI := distBetweenObjectAndCamera(backgroundObjects[i], cam)
 		distanceJ := distBetweenObjectAndCamera(backgroundObjects[j], cam)
@@ -107,7 +107,7 @@ func sortObjects(backgroundObjects []*Object3d, cam *Camera) {
 	})
 }
 
-func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
+func (w *World) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 
 	if w.currentCamera == -1 || len(w.cameras) == 0 {
 		return
@@ -143,8 +143,8 @@ func (w *World_3d) PaintObjects(screen *ebiten.Image, xsize, ysize int) {
 	}
 
 	// get objects which are poing at and from the camera. objects pointing towards the camera are drawn first
-	backgroundObjects := make([]*Object3d, 0)
-	foregroundObjects := make([]*Object3d, 0)
+	backgroundObjects := make([]*Model, 0)
+	foregroundObjects := make([]*Model, 0)
 	for i, obj := range w.objectToDrawFirst {
 		if obj.objectDirection == nil {
 			continue
