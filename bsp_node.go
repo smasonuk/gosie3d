@@ -232,6 +232,9 @@ func (b *BspNode) paintPoly(
 
 // clipPolygon applies the Sutherland-Hodgman algorithm to clip a polygon against the screen boundaries.
 func clipPolygon(subjectPolygon []Point, screenWidth, screenHeight float32) []Point {
+	// a bit of a hack so the edges of the new polygon are not exactly on the screen edges.
+	screenWidth = screenWidth + 1
+	screenHeight = screenHeight + 1
 	// Clip against the 4 screen edges sequentially.
 	// The output of one clipping stage becomes the input for the next.
 	clipped := clipAgainstEdge(subjectPolygon, func(p Point) bool { return p.X >= 0 }, func(s, e Point) Point { // Left edge
